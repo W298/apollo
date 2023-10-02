@@ -7,6 +7,17 @@
 #include "DeviceResources.h"
 #include "StepTimer.h"
 
+struct Vertex
+{
+    DirectX::XMFLOAT4 position;
+    DirectX::XMFLOAT4 color;
+};
+
+struct ConstantBuffer
+{
+    DirectX::XMFLOAT4 colorMultiplier;
+};
+
 // A basic game implementation that creates a D3D12 device and
 // provides a game loop.
 class Game final : public DX::IDeviceNotify
@@ -42,7 +53,7 @@ public:
     void OnWindowSizeChanged(int width, int height);
 
     // Properties
-    void GetDefaultSize( int& width, int& height ) const noexcept;
+    void GetDefaultSize(int& width, int& height) const noexcept;
 
 private:
 
@@ -55,17 +66,24 @@ private:
     void CreateWindowSizeDependentResources();
 
     // Device resources.
-    std::unique_ptr<DX::DeviceResources>        m_deviceResources;
+    std::unique_ptr<DX::DeviceResources>            m_deviceResources;
 
     // Rendering loop timer.
-    DX::StepTimer                               m_timer;
+    DX::StepTimer                                   m_timer;
 
     // If using the DirectX Tool Kit for DX12, uncomment this line:
-    std::unique_ptr<DirectX::GraphicsMemory> m_graphicsMemory;
+    std::unique_ptr<DirectX::GraphicsMemory>        m_graphicsMemory;
 
     // Direct3D 12 objects
-    Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pipelineState;
-    Microsoft::WRL::ComPtr<ID3D12Resource>      m_vertexBuffer;
-    D3D12_VERTEX_BUFFER_VIEW                    m_vertexBufferView;
+    Microsoft::WRL::ComPtr<ID3D12RootSignature>     m_rootSignature;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_pipelineState;
+    Microsoft::WRL::ComPtr<ID3D12Resource>          m_vertexBuffer;
+    D3D12_VERTEX_BUFFER_VIEW                        m_vertexBufferView;
+
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>    m_constantBufferViewHeap;
+    Microsoft::WRL::ComPtr<ID3D12Resource>          m_constantBufferUploadHeap;
+
+    ConstantBuffer                                  m_cbColorMultiplierData;
+
+    BYTE*                                           m_cbColorMultiplierGPUAddr;        
 };

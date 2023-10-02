@@ -13,15 +13,6 @@ using namespace DirectX;
 
 using Microsoft::WRL::ComPtr;
 
-namespace
-{
-    struct Vertex
-    {
-        XMFLOAT4 position;
-        XMFLOAT4 color;
-    };
-}
-
 Game::Game() noexcept(false)
 {
     m_deviceResources = std::make_unique<DX::DeviceResources>();
@@ -79,7 +70,33 @@ void Game::Update(DX::StepTimer const& timer)
     float elapsedTime = float(timer.GetElapsedSeconds());
 
     // TODO: Add your game logic here.
-    elapsedTime;
+    // Update color multiplier data.
+    static float rIncrement = 0.0002f;
+    static float gIncrement = 0.0006f;
+    static float bIncrement = 0.0009f;
+
+    m_cbColorMultiplierData.colorMultiplier.x += rIncrement;
+    m_cbColorMultiplierData.colorMultiplier.y += gIncrement;
+    m_cbColorMultiplierData.colorMultiplier.z += bIncrement;
+
+    if (m_cbColorMultiplierData.colorMultiplier.x >= 1.0 || m_cbColorMultiplierData.colorMultiplier.x <= 0.0)
+    {
+        m_cbColorMultiplierData.colorMultiplier.x = m_cbColorMultiplierData.colorMultiplier.x >= 1.0 ? 1.0 : 0.0;
+        rIncrement = -rIncrement;
+    }
+    if (m_cbColorMultiplierData.colorMultiplier.y >= 1.0 || m_cbColorMultiplierData.colorMultiplier.y <= 0.0)
+    {
+        m_cbColorMultiplierData.colorMultiplier.y = m_cbColorMultiplierData.colorMultiplier.y >= 1.0 ? 1.0 : 0.0;
+        gIncrement = -gIncrement;
+    }
+    if (m_cbColorMultiplierData.colorMultiplier.z >= 1.0 || m_cbColorMultiplierData.colorMultiplier.z <= 0.0)
+    {
+        m_cbColorMultiplierData.colorMultiplier.z = m_cbColorMultiplierData.colorMultiplier.z >= 1.0 ? 1.0 : 0.0;
+        bIncrement = -bIncrement;
+    }
+
+    // copy our ConstantBuffer instance to the mapped constant buffer resource
+    memcpy(m_cbColorMultiplierGPUAddr, &m_cbColorMultiplierData, sizeof(m_cbColorMultiplierData));
 
     PIXEndEvent();
 }
@@ -103,12 +120,16 @@ void Game::Render()
     PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
 
     // TODO: Add your rendering code here.
+    // Set root signature and pipeline state.
     commandList->SetGraphicsRootSignature(m_rootSignature.Get());
     commandList->SetPipelineState(m_pipelineState.Get());
 
     // Set necessary state.
     commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
+
+    commandList->SetDescriptorHeaps(1, m_constantBufferViewHeap.GetAddressOf());
+    commandList->SetGraphicsRootDescriptorTable(0, m_constantBufferViewHeap->GetGPUDescriptorHandleForHeapStart());
 
     // Draw triangle.
     commandList->DrawInstanced(3, 1, 0, 0);
@@ -226,8 +247,20 @@ void Game::CreateDeviceDependentResources()
     // TODO: Initialize device dependent objects here (independent of window size).
 	// Create an empty root signature.
     {
+        CD3DX12_DESCRIPTOR_RANGE descriptorRanges[1];
+        CD3DX12_ROOT_PARAMETER rootParameters[1];
+
+        descriptorRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
+        rootParameters[0].InitAsDescriptorTable(_countof(descriptorRanges), descriptorRanges, D3D12_SHADER_VISIBILITY_ALL);
+
+        D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
+			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+            D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+            D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
+            D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS;
+
         CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
-        rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+        rootSignatureDesc.Init(_countof(rootParameters), rootParameters, 0, nullptr, rootSignatureFlags);
 
         ComPtr<ID3DBlob> signature;
         ComPtr<ID3DBlob> error;
@@ -306,6 +339,47 @@ void Game::CreateDeviceDependentResources()
         m_vertexBufferView.SizeInBytes = sizeof(s_vertexData);
     }
 
+    // Create a descriptor heap for the constant buffers.
+    {
+    	D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+		heapDesc.NumDescriptors = 1;
+		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        DX::ThrowIfFailed(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_constantBufferViewHeap)));
+
+        m_constantBufferViewHeap->SetName(L"Constant Buffer View Descriptor Heap");
+	}
+
+    // Create the constant buffer.
+    {
+        CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
+        CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(ConstantBuffer) + 255) & ~255);
+
+        DX::ThrowIfFailed(
+            device->CreateCommittedResource(
+                &heapProps,
+                D3D12_HEAP_FLAG_NONE,
+                &resDesc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr, 
+                IID_PPV_ARGS(&m_constantBufferUploadHeap)));
+        m_constantBufferUploadHeap->SetName(L"Constant Buffer Upload Resource Heap");
+    }
+
+    // Create the constant buffer view.
+    {
+        D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+        cbvDesc.BufferLocation = m_constantBufferUploadHeap->GetGPUVirtualAddress();
+        cbvDesc.SizeInBytes = (sizeof(ConstantBuffer) + 255) & ~255;    // CB size is required to be 256-byte aligned.
+        device->CreateConstantBufferView(&cbvDesc, m_constantBufferViewHeap->GetCPUDescriptorHandleForHeapStart());
+
+        ZeroMemory(&m_cbColorMultiplierData, sizeof(m_cbColorMultiplierData));
+
+        CD3DX12_RANGE readRange(0, 0);
+        DX::ThrowIfFailed(m_constantBufferUploadHeap->Map(0, &readRange, reinterpret_cast<void**>(&m_cbColorMultiplierGPUAddr)));
+        memcpy(m_cbColorMultiplierGPUAddr, &m_cbColorMultiplierData, sizeof(m_cbColorMultiplierData));
+    }
+
     // Wait until assets have been uploaded to the GPU.
     m_deviceResources->WaitForGpu();
 }
@@ -323,6 +397,9 @@ void Game::OnDeviceLost()
     m_rootSignature.Reset();
     m_pipelineState.Reset();
     m_vertexBuffer.Reset();
+
+    m_constantBufferViewHeap.Reset();
+    m_constantBufferUploadHeap.Reset();
 }
 
 void Game::OnDeviceRestored()

@@ -19,7 +19,16 @@ struct Interpolants
     float4 color : COLOR0;
 };
 
+cbuffer ConstantBuffer : register(b0)
+{
+    float4 colorMultiplier;
+};
+
 Interpolants main(Vertex In)
 {
-    return In;
+    Interpolants Out;
+    Out.position = In.position;
+    Out.color = In.color * colorMultiplier;
+
+    return Out;
 }
