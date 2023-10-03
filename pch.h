@@ -72,7 +72,7 @@
 #endif
 
 // If using the DirectX Tool Kit for DX12, uncomment this line:
-#include "GraphicsMemory.h"
+// #include "GraphicsMemory.h"
 
 namespace DX
 {

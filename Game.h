@@ -7,17 +7,6 @@
 #include "DeviceResources.h"
 #include "StepTimer.h"
 
-struct Vertex
-{
-    DirectX::XMFLOAT4 position;
-    DirectX::XMFLOAT4 color;
-};
-
-struct ConstantBuffer
-{
-    DirectX::XMFLOAT4 colorMultiplier;
-};
-
 // A basic game implementation that creates a D3D12 device and
 // provides a game loop.
 class Game final : public DX::IDeviceNotify
@@ -57,6 +46,27 @@ public:
 
 private:
 
+    struct Vertex
+    {
+        DirectX::XMFLOAT4 position;
+        DirectX::XMFLOAT4 color;
+    };
+
+    struct ConstantBuffer
+    {
+        DirectX::XMFLOAT4 colorMultiplier;
+    };
+
+    union PaddedConstantBuffer
+    {
+        ConstantBuffer constants;
+        uint8_t bytes[2 * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT];
+    };
+
+    // Check the exact size of the PaddedConstantBuffer to make sure it will align properly
+    static_assert(sizeof(PaddedConstantBuffer) == 
+        2 * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT, "PaddedConstantBuffer is not aligned properly");
+
     void Update(DX::StepTimer const& timer);
     void Render();
 
@@ -71,22 +81,33 @@ private:
     // Rendering loop timer.
     DX::StepTimer                                   m_timer;
 
-    // If using the DirectX Tool Kit for DX12, uncomment this line:
-    std::unique_ptr<DirectX::GraphicsMemory>        m_graphicsMemory;
-
     // Direct3D 12 objects
     Microsoft::WRL::ComPtr<ID3D12RootSignature>     m_rootSignature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_pipelineState;
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_vertexBuffer;
     D3D12_VERTEX_BUFFER_VIEW                        m_vertexBufferView;
 
+    // Index in the root parameter table
     static const UINT                               c_rootParameterCB = 0;
 
+    // Constant buffer objects
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_cbUploadHeap;
-    ConstantBuffer*                                 m_cbMappedData;
+    PaddedConstantBuffer*                           m_cbMappedData;
     D3D12_GPU_VIRTUAL_ADDRESS                       m_cbGpuAddress;
 
+    // Number of draw calls
+    static const unsigned int                       c_numDrawCalls = 1;
+
+    // A synchronization fence and an event. These members will be used
+    // to synchronize the CPU with the GPU so that there will be no
+    // contention for the constant buffers. 
+    Microsoft::WRL::ComPtr<ID3D12Fence>             m_fence;
+    Microsoft::WRL::Wrappers::Event                 m_fenceEvent;
+
+    // These computed values will be loaded into a ConstantBuffer
+    // during Render
     DirectX::XMFLOAT4                               m_colorMultiplier;
 
-    DirectX::GraphicsResource                       m_cbResource;
+    // If using the DirectX Tool Kit for DX12, uncomment this line:
+    // std::unique_ptr<DirectX::GraphicsMemory>     m_graphicsMemory;
 };

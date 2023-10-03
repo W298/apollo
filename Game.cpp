@@ -15,7 +15,7 @@ using Microsoft::WRL::ComPtr;
 
 Game::Game() noexcept(false)
 {
-    m_deviceResources = std::make_unique<DX::DeviceResources>();
+    m_deviceResources = std::make_unique<DX::DeviceResources>(DXGI_FORMAT_B8G8R8A8_UNORM_SRGB);
     // TODO: Provide parameters for swapchain format, depth/stencil format, and backbuffer count.
     //   Add DX::DeviceResources::c_AllowTearing to opt-in to variable rate displays.
     //   Add DX::DeviceResources::c_EnableHDR for HDR10 display.
@@ -41,6 +41,12 @@ void Game::Initialize(HWND window, int width, int height)
 
     m_deviceResources->CreateWindowSizeDependentResources();
     CreateWindowSizeDependentResources();
+
+    m_fenceEvent.Attach(CreateEvent(nullptr, FALSE, FALSE, nullptr));
+    if (!m_fenceEvent.IsValid())
+    {
+	    throw std::exception("CreateEvent");
+    }
 
     // TODO: Change the timer settings if you want something other than the default variable timestep mode.
     // e.g. for 60 FPS fixed timestep update logic, call:
@@ -70,10 +76,11 @@ void Game::Update(DX::StepTimer const& timer)
     float elapsedTime = float(timer.GetElapsedSeconds());
 
     // TODO: Add your game logic here.
+
     // Update color multiplier data.
-    static float rIncrement = 0.0002f;
-    static float gIncrement = 0.0006f;
-    static float bIncrement = 0.0009f;
+    static float rIncrement = elapsedTime / 100.f;
+    static float gIncrement = elapsedTime / 200.f;
+    static float bIncrement = elapsedTime / 300.f;
 
     m_colorMultiplier.x += rIncrement;
     m_colorMultiplier.y += gIncrement;
@@ -109,6 +116,19 @@ void Game::Render()
         return;
     }
 
+    // Check to see if the GPU is keeping up
+    int frameIdx = m_deviceResources->GetCurrentFrameIndex();
+    int numBackBuffers = m_deviceResources->GetBackBufferCount();
+    uint64_t completedValue = m_fence->GetCompletedValue();
+
+    // if frame index is reset to zero it may temporarily be smaller than the last GPU signal
+    if ((frameIdx > completedValue) && (frameIdx - completedValue > numBackBuffers))
+    {
+        // GPU not caught up, wait for at least one available frame
+        DX::ThrowIfFailed(m_fence->SetEventOnCompletion(frameIdx - numBackBuffers, m_fenceEvent.Get()));
+        WaitForSingleObjectEx(m_fenceEvent.Get(), INFINITE, FALSE);
+    }
+
     // Prepare the command list to render a new frame.
     m_deviceResources->Prepare();
     Clear();
@@ -117,16 +137,23 @@ void Game::Render()
     PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
 
     // TODO: Add your rendering code here.
-    // Set root signature and pipeline state.
+
+    // Index into the available constant buffers based on the number
+    // of draw calls. We've allocated enough for a known number of
+    // draw calls per frame times the number of back buffers
+    unsigned int cbIndex = c_numDrawCalls * (frameIdx % numBackBuffers);
+
+    // Set the root signature and pipeline state for the command list.
     commandList->SetGraphicsRootSignature(m_rootSignature.Get());
     commandList->SetPipelineState(m_pipelineState.Get());
 
-    // Set the constants.
+    // Set the constant data.
     ConstantBuffer cbData = { m_colorMultiplier };
-    memcpy(m_cbMappedData, &cbData, sizeof(ConstantBuffer));
+    memcpy(&m_cbMappedData[cbIndex].constants, &cbData, sizeof(ConstantBuffer));
 
     // Bind the constants to the shader.
-    commandList->SetGraphicsRootConstantBufferView(c_rootParameterCB, m_cbGpuAddress);
+    auto baseGpuAddress = m_cbGpuAddress + sizeof(PaddedConstantBuffer) * cbIndex;
+    commandList->SetGraphicsRootConstantBufferView(c_rootParameterCB, baseGpuAddress);
 
     // Set necessary state.
     commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -134,17 +161,22 @@ void Game::Render()
 
     // Draw triangle.
     commandList->DrawInstanced(3, 1, 0, 0);
+    baseGpuAddress += sizeof(PaddedConstantBuffer);
+    ++cbIndex;
 
     PIXEndEvent(commandList);
 
     // Show the new frame.
-    PIXBeginEvent(PIX_COLOR_DEFAULT, L"Present");
+    PIXBeginEvent(m_deviceResources->GetCommandQueue(), PIX_COLOR_DEFAULT, L"Present");
     m_deviceResources->Present();
 
     // If using the DirectX Tool Kit for DX12, uncomment this line:
-    m_graphicsMemory->Commit(m_deviceResources->GetCommandQueue());
+    // m_graphicsMemory->Commit(m_deviceResources->GetCommandQueue());
 
-    PIXEndEvent();
+    // GPU will signal an increasing value each frame
+    m_deviceResources->GetCommandQueue()->Signal(m_fence.Get(), frameIdx);
+
+    PIXEndEvent(m_deviceResources->GetCommandQueue());
 }
 
 // Helper method to clear the back buffers.
@@ -243,9 +275,10 @@ void Game::CreateDeviceDependentResources()
     }
 
     // If using the DirectX Tool Kit for DX12, uncomment this line:
-    m_graphicsMemory = std::make_unique<GraphicsMemory>(device);
+    // m_graphicsMemory = std::make_unique<GraphicsMemory>(device);
 
     // TODO: Initialize device dependent objects here (independent of window size).
+
 	// Create root signature with one constant buffer view
     {
         CD3DX12_ROOT_PARAMETER rootParameters[1];
@@ -265,14 +298,17 @@ void Game::CreateDeviceDependentResources()
         DX::ThrowIfFailed(
             D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error));
         DX::ThrowIfFailed(
-            device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+            device->CreateRootSignature(
+                0, 
+                signature->GetBufferPointer(), 
+                signature->GetBufferSize(),
                 IID_PPV_ARGS(m_rootSignature.ReleaseAndGetAddressOf())));
     }
 
     // Create the constant buffer memory and map the CPU and GPU addresses.
     {
         CD3DX12_HEAP_PROPERTIES uploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
-        size_t const cbSize = m_deviceResources->GetBackBufferCount() * ((sizeof(ConstantBuffer) + 255) & ~255);
+        size_t const cbSize = c_numDrawCalls * m_deviceResources->GetBackBufferCount() * sizeof(PaddedConstantBuffer);
 
         CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(cbSize);
         DX::ThrowIfFailed(
@@ -317,7 +353,8 @@ void Game::CreateDeviceDependentResources()
         psoDesc.RTVFormats[0] = m_deviceResources->GetBackBufferFormat();
         psoDesc.SampleDesc.Count = 1;
         DX::ThrowIfFailed(
-            device->CreateGraphicsPipelineState(&psoDesc,
+            device->CreateGraphicsPipelineState(
+                &psoDesc,
                 IID_PPV_ARGS(m_pipelineState.ReleaseAndGetAddressOf())));
     }
 
@@ -361,18 +398,32 @@ void Game::CreateDeviceDependentResources()
 
     // Wait until assets have been uploaded to the GPU.
     m_deviceResources->WaitForGpu();
+
+    // Create a fence for synchronizing between the CPU and the GPU
+    DX::ThrowIfFailed(
+        device->CreateFence(
+            m_deviceResources->GetCurrentFrameIndex(), 
+            D3D12_FENCE_FLAG_NONE, 
+            IID_PPV_ARGS(m_fence.ReleaseAndGetAddressOf())));
+
+    // Initialize values
+    m_colorMultiplier = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
 }
 
 // Allocate all memory resources that change on a window SizeChanged event.
 void Game::CreateWindowSizeDependentResources()
 {
     // TODO: Initialize windows-size dependent objects here.
+
+    // The frame index will be reset to zero when the window size changes
+    // So we need to tell the GPU to signal our fence starting with zero
+    uint64_t currentIdx = m_deviceResources->GetCurrentFrameIndex();
+    m_deviceResources->GetCommandQueue()->Signal(m_fence.Get(), currentIdx);
 }
 
 void Game::OnDeviceLost()
 {
     // TODO: Add Direct3D resource cleanup here.
-	m_graphicsMemory.reset();
     m_rootSignature.Reset();
     m_pipelineState.Reset();
     m_vertexBuffer.Reset();
@@ -380,12 +431,13 @@ void Game::OnDeviceLost()
     m_cbUploadHeap.Reset();
     m_cbMappedData = nullptr;
     m_cbGpuAddress = 0;
+
+    m_fence.Reset();
 }
 
 void Game::OnDeviceRestored()
 {
     CreateDeviceDependentResources();
-
     CreateWindowSizeDependentResources();
 }
 #pragma endregion
