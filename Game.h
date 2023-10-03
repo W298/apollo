@@ -80,10 +80,13 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_vertexBuffer;
     D3D12_VERTEX_BUFFER_VIEW                        m_vertexBufferView;
 
-    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>    m_constantBufferViewHeap;
-    Microsoft::WRL::ComPtr<ID3D12Resource>          m_constantBufferUploadHeap;
+    static const UINT                               c_rootParameterCB = 0;
 
-    ConstantBuffer                                  m_cbColorMultiplierData;
+    Microsoft::WRL::ComPtr<ID3D12Resource>          m_cbUploadHeap;
+    ConstantBuffer*                                 m_cbMappedData;
+    D3D12_GPU_VIRTUAL_ADDRESS                       m_cbGpuAddress;
 
-    BYTE*                                           m_cbColorMultiplierGPUAddr;        
+    DirectX::XMFLOAT4                               m_colorMultiplier;
+
+    DirectX::GraphicsResource                       m_cbResource;
 };

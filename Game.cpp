@@ -75,28 +75,25 @@ void Game::Update(DX::StepTimer const& timer)
     static float gIncrement = 0.0006f;
     static float bIncrement = 0.0009f;
 
-    m_cbColorMultiplierData.colorMultiplier.x += rIncrement;
-    m_cbColorMultiplierData.colorMultiplier.y += gIncrement;
-    m_cbColorMultiplierData.colorMultiplier.z += bIncrement;
+    m_colorMultiplier.x += rIncrement;
+    m_colorMultiplier.y += gIncrement;
+    m_colorMultiplier.z += bIncrement;
 
-    if (m_cbColorMultiplierData.colorMultiplier.x >= 1.0 || m_cbColorMultiplierData.colorMultiplier.x <= 0.0)
+    if (m_colorMultiplier.x >= 1.0 || m_colorMultiplier.x <= 0.0)
     {
-        m_cbColorMultiplierData.colorMultiplier.x = m_cbColorMultiplierData.colorMultiplier.x >= 1.0 ? 1.0 : 0.0;
+        m_colorMultiplier.x = m_colorMultiplier.x >= 1.0 ? 1.0 : 0.0;
         rIncrement = -rIncrement;
     }
-    if (m_cbColorMultiplierData.colorMultiplier.y >= 1.0 || m_cbColorMultiplierData.colorMultiplier.y <= 0.0)
+    if (m_colorMultiplier.y >= 1.0 || m_colorMultiplier.y <= 0.0)
     {
-        m_cbColorMultiplierData.colorMultiplier.y = m_cbColorMultiplierData.colorMultiplier.y >= 1.0 ? 1.0 : 0.0;
+        m_colorMultiplier.y = m_colorMultiplier.y >= 1.0 ? 1.0 : 0.0;
         gIncrement = -gIncrement;
     }
-    if (m_cbColorMultiplierData.colorMultiplier.z >= 1.0 || m_cbColorMultiplierData.colorMultiplier.z <= 0.0)
+    if (m_colorMultiplier.z >= 1.0 || m_colorMultiplier.z <= 0.0)
     {
-        m_cbColorMultiplierData.colorMultiplier.z = m_cbColorMultiplierData.colorMultiplier.z >= 1.0 ? 1.0 : 0.0;
+        m_colorMultiplier.z = m_colorMultiplier.z >= 1.0 ? 1.0 : 0.0;
         bIncrement = -bIncrement;
     }
-
-    // copy our ConstantBuffer instance to the mapped constant buffer resource
-    memcpy(m_cbColorMultiplierGPUAddr, &m_cbColorMultiplierData, sizeof(m_cbColorMultiplierData));
 
     PIXEndEvent();
 }
@@ -124,12 +121,16 @@ void Game::Render()
     commandList->SetGraphicsRootSignature(m_rootSignature.Get());
     commandList->SetPipelineState(m_pipelineState.Get());
 
+    // Set the constants.
+    ConstantBuffer cbData = { m_colorMultiplier };
+    memcpy(m_cbMappedData, &cbData, sizeof(ConstantBuffer));
+
+    // Bind the constants to the shader.
+    commandList->SetGraphicsRootConstantBufferView(c_rootParameterCB, m_cbGpuAddress);
+
     // Set necessary state.
     commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
-
-    commandList->SetDescriptorHeaps(1, m_constantBufferViewHeap.GetAddressOf());
-    commandList->SetGraphicsRootDescriptorTable(0, m_constantBufferViewHeap->GetGPUDescriptorHandleForHeapStart());
 
     // Draw triangle.
     commandList->DrawInstanced(3, 1, 0, 0);
@@ -245,13 +246,10 @@ void Game::CreateDeviceDependentResources()
     m_graphicsMemory = std::make_unique<GraphicsMemory>(device);
 
     // TODO: Initialize device dependent objects here (independent of window size).
-	// Create an empty root signature.
+	// Create root signature with one constant buffer view
     {
-        CD3DX12_DESCRIPTOR_RANGE descriptorRanges[1];
         CD3DX12_ROOT_PARAMETER rootParameters[1];
-
-        descriptorRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
-        rootParameters[0].InitAsDescriptorTable(_countof(descriptorRanges), descriptorRanges, D3D12_SHADER_VISIBILITY_ALL);
+        rootParameters[0].InitAsConstantBufferView(c_rootParameterCB, 0);
 
         D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
@@ -271,35 +269,57 @@ void Game::CreateDeviceDependentResources()
                 IID_PPV_ARGS(m_rootSignature.ReleaseAndGetAddressOf())));
     }
 
-    // Create the pipeline state, which includes loading shaders.
-    auto vertexShaderBlob = DX::ReadData(L"VertexShader.cso");
-    auto pixelShaderBlob = DX::ReadData(L"PixelShader.cso");
-
-    static const D3D12_INPUT_ELEMENT_DESC s_inputElementDesc[2] =
+    // Create the constant buffer memory and map the CPU and GPU addresses.
     {
-        { "SV_Position", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,  0 },
-        { "COLOR",       0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA , 0 },
-    };
+        CD3DX12_HEAP_PROPERTIES uploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
+        size_t const cbSize = m_deviceResources->GetBackBufferCount() * ((sizeof(ConstantBuffer) + 255) & ~255);
 
-    // Describe and create the graphics pipeline state object (PSO).
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-    psoDesc.InputLayout = { s_inputElementDesc, _countof(s_inputElementDesc) };
-    psoDesc.pRootSignature = m_rootSignature.Get();
-    psoDesc.VS = { vertexShaderBlob.data(), vertexShaderBlob.size() };
-    psoDesc.PS = { pixelShaderBlob.data(), pixelShaderBlob.size() };
-    psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-    psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-    psoDesc.DepthStencilState.DepthEnable = FALSE;
-    psoDesc.DepthStencilState.StencilEnable = FALSE;
-    psoDesc.DSVFormat = m_deviceResources->GetDepthBufferFormat();
-    psoDesc.SampleMask = UINT_MAX;
-    psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    psoDesc.NumRenderTargets = 1;
-    psoDesc.RTVFormats[0] = m_deviceResources->GetBackBufferFormat();
-    psoDesc.SampleDesc.Count = 1;
-    DX::ThrowIfFailed(
-        device->CreateGraphicsPipelineState(&psoDesc,
-            IID_PPV_ARGS(m_pipelineState.ReleaseAndGetAddressOf())));
+        CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(cbSize);
+        DX::ThrowIfFailed(
+            device->CreateCommittedResource(
+                &uploadHeapProperties,
+                D3D12_HEAP_FLAG_NONE,
+                &resourceDesc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(m_cbUploadHeap.ReleaseAndGetAddressOf())));
+
+        DX::ThrowIfFailed(m_cbUploadHeap->Map(0, nullptr, reinterpret_cast<void**>(&m_cbMappedData)));
+
+        m_cbGpuAddress = m_cbUploadHeap->GetGPUVirtualAddress();
+    }
+
+    // Create the pipeline state, which includes loading shaders.
+    {
+        auto vertexShaderBlob = DX::ReadData(L"VertexShader.cso");
+        auto pixelShaderBlob = DX::ReadData(L"PixelShader.cso");
+
+        static const D3D12_INPUT_ELEMENT_DESC s_inputElementDesc[2] =
+        {
+            { "SV_Position", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,  0 },
+            { "COLOR",       0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA , 0 },
+        };
+
+        // Describe and create the graphics pipeline state object (PSO).
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+        psoDesc.InputLayout = { s_inputElementDesc, _countof(s_inputElementDesc) };
+        psoDesc.pRootSignature = m_rootSignature.Get();
+        psoDesc.VS = { vertexShaderBlob.data(), vertexShaderBlob.size() };
+        psoDesc.PS = { pixelShaderBlob.data(), pixelShaderBlob.size() };
+        psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+        psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+        psoDesc.DepthStencilState.DepthEnable = FALSE;
+        psoDesc.DepthStencilState.StencilEnable = FALSE;
+        psoDesc.DSVFormat = m_deviceResources->GetDepthBufferFormat();
+        psoDesc.SampleMask = UINT_MAX;
+        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        psoDesc.NumRenderTargets = 1;
+        psoDesc.RTVFormats[0] = m_deviceResources->GetBackBufferFormat();
+        psoDesc.SampleDesc.Count = 1;
+        DX::ThrowIfFailed(
+            device->CreateGraphicsPipelineState(&psoDesc,
+                IID_PPV_ARGS(m_pipelineState.ReleaseAndGetAddressOf())));
+    }
 
     // Create vertex buffer.
     {
@@ -339,47 +359,6 @@ void Game::CreateDeviceDependentResources()
         m_vertexBufferView.SizeInBytes = sizeof(s_vertexData);
     }
 
-    // Create a descriptor heap for the constant buffers.
-    {
-    	D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-		heapDesc.NumDescriptors = 1;
-		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        DX::ThrowIfFailed(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_constantBufferViewHeap)));
-
-        m_constantBufferViewHeap->SetName(L"Constant Buffer View Descriptor Heap");
-	}
-
-    // Create the constant buffer.
-    {
-        CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
-        CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(ConstantBuffer) + 255) & ~255);
-
-        DX::ThrowIfFailed(
-            device->CreateCommittedResource(
-                &heapProps,
-                D3D12_HEAP_FLAG_NONE,
-                &resDesc,
-                D3D12_RESOURCE_STATE_GENERIC_READ,
-                nullptr, 
-                IID_PPV_ARGS(&m_constantBufferUploadHeap)));
-        m_constantBufferUploadHeap->SetName(L"Constant Buffer Upload Resource Heap");
-    }
-
-    // Create the constant buffer view.
-    {
-        D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-        cbvDesc.BufferLocation = m_constantBufferUploadHeap->GetGPUVirtualAddress();
-        cbvDesc.SizeInBytes = (sizeof(ConstantBuffer) + 255) & ~255;    // CB size is required to be 256-byte aligned.
-        device->CreateConstantBufferView(&cbvDesc, m_constantBufferViewHeap->GetCPUDescriptorHandleForHeapStart());
-
-        ZeroMemory(&m_cbColorMultiplierData, sizeof(m_cbColorMultiplierData));
-
-        CD3DX12_RANGE readRange(0, 0);
-        DX::ThrowIfFailed(m_constantBufferUploadHeap->Map(0, &readRange, reinterpret_cast<void**>(&m_cbColorMultiplierGPUAddr)));
-        memcpy(m_cbColorMultiplierGPUAddr, &m_cbColorMultiplierData, sizeof(m_cbColorMultiplierData));
-    }
-
     // Wait until assets have been uploaded to the GPU.
     m_deviceResources->WaitForGpu();
 }
@@ -398,8 +377,9 @@ void Game::OnDeviceLost()
     m_pipelineState.Reset();
     m_vertexBuffer.Reset();
 
-    m_constantBufferViewHeap.Reset();
-    m_constantBufferUploadHeap.Reset();
+    m_cbUploadHeap.Reset();
+    m_cbMappedData = nullptr;
+    m_cbGpuAddress = 0;
 }
 
 void Game::OnDeviceRestored()
