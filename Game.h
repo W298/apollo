@@ -48,8 +48,8 @@ private:
 
     struct Vertex
     {
-        DirectX::XMFLOAT4 position;
-        DirectX::XMFLOAT4 color;
+        DirectX::XMFLOAT3 position;
+        DirectX::XMFLOAT3 color;
     };
 
     struct ConstantBuffer
@@ -85,7 +85,9 @@ private:
     Microsoft::WRL::ComPtr<ID3D12RootSignature>     m_rootSignature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_pipelineState;
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_vertexBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource>          m_indexBuffer;
     D3D12_VERTEX_BUFFER_VIEW                        m_vertexBufferView;
+    D3D12_INDEX_BUFFER_VIEW                         m_indexBufferView;
 
     // Index in the root parameter table
     static const UINT                               c_rootParameterCB = 0;

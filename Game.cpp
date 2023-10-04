@@ -158,9 +158,10 @@ void Game::Render()
     // Set necessary state.
     commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
+    commandList->IASetIndexBuffer(&m_indexBufferView);
 
     // Draw triangle.
-    commandList->DrawInstanced(3, 1, 0, 0);
+    commandList->DrawIndexedInstanced(3, 1, 0, 0, 0);
     baseGpuAddress += sizeof(PaddedConstantBuffer);
     ++cbIndex;
 
@@ -332,8 +333,8 @@ void Game::CreateDeviceDependentResources()
 
         static const D3D12_INPUT_ELEMENT_DESC s_inputElementDesc[2] =
         {
-            { "SV_Position", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,  0 },
-            { "COLOR",       0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA , 0 },
+            { "POSITION",   0,  DXGI_FORMAT_R32G32B32_FLOAT,    0,  0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "COLOR",      0,  DXGI_FORMAT_R32G32B32_FLOAT,    0,  12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         };
 
         // Describe and create the graphics pipeline state object (PSO).
@@ -360,19 +361,19 @@ void Game::CreateDeviceDependentResources()
 
     // Create vertex buffer.
     {
-        static const Vertex s_vertexData[3] =
+        static const Vertex s_vertexData[] =
         {
-            { { 0.0f,   0.5f,  0.5f, 1.0f },{ 1.0f, 0.0f, 0.0f, 1.0f } },  // Top / Red
-            { { 0.5f,  -0.5f,  0.5f, 1.0f },{ 0.0f, 1.0f, 0.0f, 1.0f } },  // Right / Green
-            { { -0.5f, -0.5f,  0.5f, 1.0f },{ 0.0f, 0.0f, 1.0f, 1.0f } }   // Left / Blue
+            { { 0.0f,   0.5f,  0.5f },{ 1.0f, 0.0f, 0.0f } },  // Top / Red
+            { { 0.5f,  -0.5f,  0.5f },{ 0.0f, 1.0f, 0.0f } },  // Right / Green
+            { { -0.5f, -0.5f,  0.5f },{ 0.0f, 0.0f, 1.0f } }   // Left / Blue
         };
 
         // Note: using upload heaps to transfer static data like vert buffers is not 
         // recommended. Every time the GPU needs it, the upload heap will be marshalled 
         // over. Please read up on Default Heap usage. An upload heap is used here for 
         // code simplicity and because there are very few verts to actually transfer.
-        CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
-        auto resDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(s_vertexData));
+        const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
+        const CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(s_vertexData));
 
         DX::ThrowIfFailed(
             device->CreateCommittedResource(&heapProps,
@@ -385,8 +386,7 @@ void Game::CreateDeviceDependentResources()
         // Copy the triangle data to the vertex buffer.
         UINT8* pVertexDataBegin;
         CD3DX12_RANGE readRange(0, 0);		// We do not intend to read from this resource on the CPU.
-        DX::ThrowIfFailed(
-            m_vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin)));
+        DX::ThrowIfFailed(m_vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin)));
         memcpy(pVertexDataBegin, s_vertexData, sizeof(s_vertexData));
         m_vertexBuffer->Unmap(0, nullptr);
 
@@ -394,6 +394,37 @@ void Game::CreateDeviceDependentResources()
         m_vertexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
         m_vertexBufferView.StrideInBytes = sizeof(Vertex);
         m_vertexBufferView.SizeInBytes = sizeof(s_vertexData);
+    }
+
+    // Create index buffer.
+    {
+        static const uint16_t s_indexData[] =
+        {
+            0, 1, 2
+        };
+
+        const D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+        const CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(s_indexData));
+
+    	DX::ThrowIfFailed(
+            device->CreateCommittedResource(&heapProps,
+                D3D12_HEAP_FLAG_NONE,
+                &resDesc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(m_indexBuffer.ReleaseAndGetAddressOf())));
+
+        // Copy the data to the index buffer.
+        UINT8* pVertexDataBegin;
+        CD3DX12_RANGE readRange(0, 0);		// We do not intend to read from this resource on the CPU.
+        DX::ThrowIfFailed(m_indexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin)));
+        memcpy(pVertexDataBegin, s_indexData, sizeof(s_indexData));
+        m_indexBuffer->Unmap(0, nullptr);
+
+        // Initialize the index buffer view.
+        m_indexBufferView.BufferLocation = m_indexBuffer->GetGPUVirtualAddress();
+        m_indexBufferView.Format = DXGI_FORMAT_R16_UINT;
+        m_indexBufferView.SizeInBytes = sizeof(s_indexData);
     }
 
     // Wait until assets have been uploaded to the GPU.
