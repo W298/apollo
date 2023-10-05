@@ -5,7 +5,9 @@
 #include "pch.h"
 #include "Game.h"
 
+#include "CommonStates.h"
 #include "ReadData.h"
+#include "DirectXTK12/Src/Geometry.h"
 
 extern void ExitGame() noexcept;
 
@@ -34,6 +36,12 @@ Game::~Game()
 // Initialize the Direct3D resources required to run.
 void Game::Initialize(HWND window, int width, int height)
 {
+    // Initialize input devices.
+    m_keyboard = std::make_unique<Keyboard>();
+    m_mouse = std::make_unique<Mouse>();
+    m_mouse->SetWindow(window);
+    m_mouse->SetMode(Mouse::MODE_RELATIVE);
+
     m_deviceResources->SetWindow(window, width, height);
 
     m_deviceResources->CreateDeviceResources();
@@ -102,6 +110,53 @@ void Game::Update(DX::StepTimer const& timer)
         bIncrement = -bIncrement;
     }
 
+    // Handle keyboard input.
+    float verticalMove = 0.0f;
+    float horizontalMove = 0.0f;
+
+    const auto keyboard = m_keyboard->GetState();
+    if (keyboard.Escape)
+    {
+        ExitGame();
+    }
+    else if (keyboard.W)
+    {
+        verticalMove = 3.0f * elapsedTime;
+    }
+    else if (keyboard.S)
+    {
+        verticalMove = -3.0f * elapsedTime;
+    }
+    else if (keyboard.A)
+    {
+        horizontalMove = -3.0f * elapsedTime;
+    }
+    else if (keyboard.D)
+    {
+        horizontalMove = 3.0f * elapsedTime;
+    }
+
+    // Handle mouse input.
+    const auto mouse = m_mouse->GetState();
+    m_camYaw += mouse.x * elapsedTime / 10.0f;
+    m_camPitch += mouse.y * elapsedTime / 10.0f;
+
+    // Set view matrix based on camera position and orientation.
+    m_camRotationMatrix = XMMatrixRotationRollPitchYaw(m_camPitch, m_camYaw, 0.0f);
+    m_camLookTarget = XMVector3TransformCoord(DEFAULT_FORWARD_VECTOR, m_camRotationMatrix);
+    m_camLookTarget = XMVector3Normalize(m_camLookTarget);
+
+    m_camRight = XMVector3TransformCoord(DEFAULT_RIGHT_VECTOR, m_camRotationMatrix);
+    m_camUp = XMVector3TransformCoord(DEFAULT_UP_VECTOR, m_camRotationMatrix);
+    m_camForward = XMVector3TransformCoord(DEFAULT_FORWARD_VECTOR, m_camRotationMatrix);
+
+    m_camPosition += horizontalMove * m_camRight;
+    m_camPosition += verticalMove * m_camForward;
+
+    m_camLookTarget = m_camPosition + m_camLookTarget;
+
+    m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, m_camUp);
+
     PIXEndEvent();
 }
 #pragma endregion
@@ -148,7 +203,12 @@ void Game::Render()
     commandList->SetPipelineState(m_pipelineState.Get());
 
     // Set the constant data.
-    ConstantBuffer cbData = { m_colorMultiplier };
+    ConstantBuffer cbData;
+    cbData.colorMultiplier = XMLoadFloat4(&m_colorMultiplier);
+    cbData.worldMatrix = XMMatrixTranspose(m_worldMatrix);
+    cbData.viewMatrix = XMMatrixTranspose(m_viewMatrix);
+    cbData.projectionMatrix = XMMatrixTranspose(m_projectionMatrix);
+
     memcpy(&m_cbMappedData[cbIndex].constants, &cbData, sizeof(ConstantBuffer));
 
     // Bind the constants to the shader.
@@ -161,7 +221,7 @@ void Game::Render()
     commandList->IASetIndexBuffer(&m_indexBufferView);
 
     // Draw triangle.
-    commandList->DrawIndexedInstanced(3, 1, 0, 0, 0);
+    commandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
     baseGpuAddress += sizeof(PaddedConstantBuffer);
     ++cbIndex;
 
@@ -363,9 +423,35 @@ void Game::CreateDeviceDependentResources()
     {
         static const Vertex s_vertexData[] =
         {
-            { { 0.0f,   0.5f,  0.5f },{ 1.0f, 0.0f, 0.0f } },  // Top / Red
-            { { 0.5f,  -0.5f,  0.5f },{ 0.0f, 1.0f, 0.0f } },  // Right / Green
-            { { -0.5f, -0.5f,  0.5f },{ 0.0f, 0.0f, 1.0f } }   // Left / Blue
+			{ XMFLOAT3(-1.0f, 1.0f, -1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
+            { XMFLOAT3(1.0f, 1.0f, -1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
+            { XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
+            { XMFLOAT3(-1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
+
+            { XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
+            { XMFLOAT3(1.0f, -1.0f, -1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
+            { XMFLOAT3(1.0f, -1.0f, 1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
+            { XMFLOAT3(-1.0f, -1.0f, 1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
+
+            { XMFLOAT3(-1.0f, -1.0f, 1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
+            { XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
+            { XMFLOAT3(-1.0f, 1.0f, -1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
+            { XMFLOAT3(-1.0f, 1.0f, 1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
+
+            { XMFLOAT3(1.0f, -1.0f, 1.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
+            { XMFLOAT3(1.0f, -1.0f, -1.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
+            { XMFLOAT3(1.0f, 1.0f, -1.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
+            { XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
+
+            { XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
+            { XMFLOAT3(1.0f, -1.0f, -1.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
+            { XMFLOAT3(1.0f, 1.0f, -1.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
+            { XMFLOAT3(-1.0f, 1.0f, -1.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
+
+            { XMFLOAT3(-1.0f, -1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
+            { XMFLOAT3(1.0f, -1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
+            { XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
+            { XMFLOAT3(-1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
         };
 
         // Note: using upload heaps to transfer static data like vert buffers is not 
@@ -400,7 +486,23 @@ void Game::CreateDeviceDependentResources()
     {
         static const uint16_t s_indexData[] =
         {
-            0, 1, 2
+            3,1,0,
+            2,1,3,
+
+            6,4,5,
+            7,4,6,
+
+            11,9,8,
+            10,9,11,
+
+            14,12,13,
+            15,12,14,
+
+            19,17,16,
+            18,17,19,
+
+            22,20,21,
+            23,20,22
         };
 
         const D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
@@ -439,12 +541,32 @@ void Game::CreateDeviceDependentResources()
 
     // Initialize values
     m_colorMultiplier = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+
+    // Initialize camera values
+    m_camUp = DEFAULT_UP_VECTOR;
+    m_camForward = DEFAULT_FORWARD_VECTOR;
+    m_camRight = DEFAULT_RIGHT_VECTOR;
+    m_camYaw = -3.0f;
+    m_camPitch = 0.37f;
+
+    // Initialize the world matrix
+    m_worldMatrix = XMMatrixIdentity();
+
+    // Initialize the view matrix
+    m_camPosition = XMVectorSet(0.0f, 2.0f, 5.0f, 0.0f);
+    m_camLookTarget = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+    m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, DEFAULT_UP_VECTOR);
 }
 
 // Allocate all memory resources that change on a window SizeChanged event.
 void Game::CreateWindowSizeDependentResources()
 {
     // TODO: Initialize windows-size dependent objects here.
+
+    // Initialize the projection matrix
+    auto size = m_deviceResources->GetOutputSize();
+    m_projectionMatrix = XMMatrixPerspectiveFovLH(
+        XM_PIDIV4, float(size.right) / float(size.bottom), 0.01f, 100.0f);
 
     // The frame index will be reset to zero when the window size changes
     // So we need to tell the GPU to signal our fence starting with zero

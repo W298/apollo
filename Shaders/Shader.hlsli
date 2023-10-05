@@ -4,6 +4,9 @@
 struct ConstantBufferType
 {
     float4 colorMultiplier;
+    float4x4 worldMatrix;
+    float4x4 viewMatrix;
+    float4x4 projectionMatrix;
 };
 
 ConstantBuffer<ConstantBufferType> cb : register(b0);
@@ -45,8 +48,11 @@ PS_OUTPUT PS(PS_INPUT input)
 PS_INPUT VS(VS_INPUT input)
 {
     PS_INPUT output;
-    output.position = float4(input.position.xyz, 1.0f);
-    output.color = float4(input.color.xyz, 1.0f) * cb.colorMultiplier;
+    output.position = mul(input.position, cb.worldMatrix);
+    output.position = mul(output.position, cb.viewMatrix);
+    output.position = mul(output.position, cb.projectionMatrix);
+
+	output.color = float4(input.color.xyz, 1.0f) * cb.colorMultiplier;
 
     return output;
 }

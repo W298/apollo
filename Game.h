@@ -5,6 +5,10 @@
 #pragma once
 
 #include "DeviceResources.h"
+#include "Keyboard.h"
+#include "Mouse.h"
+#include "GeometricPrimitive.h"
+#include "Effects.h"
 #include "StepTimer.h"
 
 // A basic game implementation that creates a D3D12 device and
@@ -54,7 +58,10 @@ private:
 
     struct ConstantBuffer
     {
-        DirectX::XMFLOAT4 colorMultiplier;
+        DirectX::XMVECTOR colorMultiplier;
+        DirectX::XMMATRIX worldMatrix;
+        DirectX::XMMATRIX viewMatrix;
+        DirectX::XMMATRIX projectionMatrix;
     };
 
     union PaddedConstantBuffer
@@ -75,11 +82,19 @@ private:
     void CreateDeviceDependentResources();
     void CreateWindowSizeDependentResources();
 
+    const DirectX::XMVECTORF32 DEFAULT_UP_VECTOR = { 0.f, 1.f, 0.f, 0.f };
+    const DirectX::XMVECTORF32 DEFAULT_FORWARD_VECTOR = { 0.f, 0.f, 1.f, 0.f };
+    const DirectX::XMVECTORF32 DEFAULT_RIGHT_VECTOR = { 1.f, 0.f, 0.f, 0.f };
+
     // Device resources.
     std::unique_ptr<DX::DeviceResources>            m_deviceResources;
 
     // Rendering loop timer.
     DX::StepTimer                                   m_timer;
+
+    // Input devices.
+    std::unique_ptr<DirectX::Keyboard>              m_keyboard;
+    std::unique_ptr<DirectX::Mouse>                 m_mouse;
 
     // Direct3D 12 objects
     Microsoft::WRL::ComPtr<ID3D12RootSignature>     m_rootSignature;
@@ -109,6 +124,19 @@ private:
     // These computed values will be loaded into a ConstantBuffer
     // during Render
     DirectX::XMFLOAT4                               m_colorMultiplier;
+    DirectX::XMMATRIX                               m_worldMatrix;
+    DirectX::XMMATRIX                               m_viewMatrix;
+    DirectX::XMMATRIX                               m_projectionMatrix;
+
+    // Camera state
+    DirectX::XMVECTOR                               m_camPosition;
+    DirectX::XMVECTOR                               m_camLookTarget;
+    DirectX::XMMATRIX							    m_camRotationMatrix;
+    DirectX::XMVECTOR                               m_camUp;
+    DirectX::XMVECTOR                               m_camRight;
+    DirectX::XMVECTOR                               m_camForward;
+    float                                           m_camYaw;
+    float										    m_camPitch;
 
     // If using the DirectX Tool Kit for DX12, uncomment this line:
     // std::unique_ptr<DirectX::GraphicsMemory>     m_graphicsMemory;
