@@ -7,8 +7,6 @@
 #include "DeviceResources.h"
 #include "Keyboard.h"
 #include "Mouse.h"
-#include "GeometricPrimitive.h"
-#include "Effects.h"
 #include "StepTimer.h"
 
 // A basic game implementation that creates a D3D12 device and
@@ -96,13 +94,14 @@ private:
     D3D12_VERTEX_BUFFER_VIEW                        m_vertexBufferView;
     D3D12_INDEX_BUFFER_VIEW                         m_indexBufferView;
 
-    // Index in the root parameter table
-    static const UINT                               c_rootParameterCB = 0;
-
     // Constant buffer objects
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_cbUploadHeap;
     PaddedConstantBuffer*                           m_cbMappedData;
     D3D12_GPU_VIRTUAL_ADDRESS                       m_cbGpuAddress;
+
+    // Texture objects
+    Microsoft::WRL::ComPtr<ID3D12Resource>          m_texResource;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>    m_srvHeap;
 
     // Number of draw calls
     static const unsigned int                       c_numDrawCalls = 1;

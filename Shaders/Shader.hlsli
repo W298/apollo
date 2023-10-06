@@ -31,12 +31,8 @@ struct PS_OUTPUT
     float4 color : SV_Target;
 };
 
-
-float nrand(float2 uv)
-{
-    return frac(sin(dot(uv, float2(12.9898, 78.233))) * 43758.5453);
-}
-
+Texture2D txDiffuse : register(t0);
+SamplerState samLinear : register(s0);
 
 //--------------------------------------------------------------------------------------
 // Pixel Shader
@@ -44,7 +40,7 @@ float nrand(float2 uv)
 PS_OUTPUT PS(PS_INPUT input)
 {
     PS_OUTPUT output;
-    output.color = float4(1.0f, 1.0f, 0.0f, 1.0f);
+    output.color = txDiffuse.Sample(samLinear, input.texCoord);
     return output;
 }
 
@@ -58,6 +54,9 @@ PS_INPUT VS(VS_INPUT input)
     output.position = mul(input.position, cb.worldMatrix);
     output.position = mul(output.position, cb.viewMatrix);
     output.position = mul(output.position, cb.projectionMatrix);
+
+    output.normal = input.normal;
+    output.texCoord = input.texCoord;
 
     return output;
 }

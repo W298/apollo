@@ -6,7 +6,10 @@
 #include "Game.h"
 
 #include "CommonStates.h"
+#include "DDSTextureLoader.h"
+#include "DirectXHelpers.h"
 #include "ReadData.h"
+#include "ResourceUploadBatch.h"
 #include "DirectXTK12/Src/Geometry.h"
 
 extern void ExitGame() noexcept;
@@ -173,29 +176,32 @@ void Game::Render()
     // draw calls per frame times the number of back buffers
     unsigned int cbIndex = c_numDrawCalls * (frameIdx % numBackBuffers);
 
-    // Set the root signature and pipeline state for the command list.
+    // Set the root signature and pipeline state.
     commandList->SetGraphicsRootSignature(m_rootSignature.Get());
     commandList->SetPipelineState(m_pipelineState.Get());
+
+    // Set the descriptor heap containing the texture SRV.
+    commandList->SetDescriptorHeaps(1, m_srvHeap.GetAddressOf());
+    commandList->SetGraphicsRootDescriptorTable(0, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
 
     // Set the constant data.
     ConstantBuffer cbData;
     cbData.worldMatrix = XMMatrixTranspose(m_worldMatrix);
     cbData.viewMatrix = XMMatrixTranspose(m_viewMatrix);
     cbData.projectionMatrix = XMMatrixTranspose(m_projectionMatrix);
-
     memcpy(&m_cbMappedData[cbIndex].constants, &cbData, sizeof(ConstantBuffer));
 
     // Bind the constants to the shader.
     auto baseGpuAddress = m_cbGpuAddress + sizeof(PaddedConstantBuffer) * cbIndex;
-    commandList->SetGraphicsRootConstantBufferView(c_rootParameterCB, baseGpuAddress);
+    commandList->SetGraphicsRootConstantBufferView(1, baseGpuAddress);
 
     // Set necessary state.
     commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
     commandList->IASetIndexBuffer(&m_indexBufferView);
 
-    // Draw triangle.
-    commandList->DrawIndexedInstanced(1536, 1, 0, 0, 0);
+    // Draw the sphere.
+    commandList->DrawIndexedInstanced(98304, 1, 0, 0, 0);
     baseGpuAddress += sizeof(PaddedConstantBuffer);
     ++cbIndex;
 
@@ -314,10 +320,26 @@ void Game::CreateDeviceDependentResources()
 
     // TODO: Initialize device dependent objects here (independent of window size).
 
-	// Create root signature with one constant buffer view
+	// Create root signature with root CBV, descriptor table (with SRV) and sampler
     {
-        CD3DX12_ROOT_PARAMETER rootParameters[1] = {};
-        rootParameters[0].InitAsConstantBufferView(c_rootParameterCB, 0);
+        CD3DX12_DESCRIPTOR_RANGE descRange[1];
+        descRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+
+        CD3DX12_ROOT_PARAMETER rootParameters[2];
+        rootParameters[0].InitAsDescriptorTable(1, descRange, D3D12_SHADER_VISIBILITY_PIXEL);   // register (t0)
+        rootParameters[1].InitAsConstantBufferView(0, 0);   // register (b0)
+
+        D3D12_STATIC_SAMPLER_DESC samplerDesc = {}; // register (s0)
+        samplerDesc.Filter = D3D12_FILTER_ANISOTROPIC;
+        samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        samplerDesc.MaxAnisotropy = 16;
+        samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+        samplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
+        samplerDesc.MinLOD = 0;
+        samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+        samplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
         D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
@@ -326,7 +348,7 @@ void Game::CreateDeviceDependentResources()
             D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS;
 
         CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
-        rootSignatureDesc.Init(_countof(rootParameters), rootParameters, 0, nullptr, rootSignatureFlags);
+        rootSignatureDesc.Init(_countof(rootParameters), rootParameters, 1, &samplerDesc, rootSignatureFlags);
 
         ComPtr<ID3DBlob> signature;
         ComPtr<ID3DBlob> error;
@@ -340,8 +362,43 @@ void Game::CreateDeviceDependentResources()
                 IID_PPV_ARGS(m_rootSignature.ReleaseAndGetAddressOf())));
     }
 
-    // Create the constant buffer memory and map the CPU and GPU addresses.
     {
+        // Load texture from file.
+        ResourceUploadBatch resourceUpload(device);
+        resourceUpload.Begin();
+        DX::ThrowIfFailed(
+            CreateDDSTextureFromFile(device, resourceUpload, L"colormap.dds", m_texResource.ReleaseAndGetAddressOf()));
+
+        auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
+        uploadResourcesFinished.wait();
+
+        // Create a descriptor heap for the texture.
+        D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
+        srvHeapDesc.NumDescriptors = 1;
+        srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+
+        DX::ThrowIfFailed(
+            device->CreateDescriptorHeap(
+                &srvHeapDesc,
+                IID_PPV_ARGS(m_srvHeap.ReleaseAndGetAddressOf())));
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Format = m_texResource->GetDesc().Format;
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        srvDesc.Texture2D.MostDetailedMip = 0;
+        srvDesc.Texture2D.MipLevels = m_texResource->GetDesc().MipLevels;
+        srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+
+        device->CreateShaderResourceView(
+            m_texResource.Get(), 
+            &srvDesc, 
+            m_srvHeap->GetCPUDescriptorHandleForHeapStart());
+    }
+
+    {
+        // Create the constant buffer memory
         CD3DX12_HEAP_PROPERTIES uploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
         size_t const cbSize = c_numDrawCalls * m_deviceResources->GetBackBufferCount() * sizeof(PaddedConstantBuffer);
 
@@ -355,8 +412,8 @@ void Game::CreateDeviceDependentResources()
                 nullptr,
                 IID_PPV_ARGS(m_cbUploadHeap.ReleaseAndGetAddressOf())));
 
+        // Map the CPU and GPU addresses.
         DX::ThrowIfFailed(m_cbUploadHeap->Map(0, nullptr, reinterpret_cast<void**>(&m_cbMappedData)));
-
         m_cbGpuAddress = m_cbUploadHeap->GetGPUVirtualAddress();
     }
 
@@ -376,7 +433,7 @@ void Game::CreateDeviceDependentResources()
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
 
         CD3DX12_RASTERIZER_DESC rasterizerDesc = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-        rasterizerDesc.FillMode = D3D12_FILL_MODE_WIREFRAME;
+        rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
 
         psoDesc.InputLayout = { s_inputElementDesc, _countof(s_inputElementDesc) };
         psoDesc.pRootSignature = m_rootSignature.Get();
@@ -401,7 +458,7 @@ void Game::CreateDeviceDependentResources()
     // Compute GeoSphere vertices and indices
     VertexCollection vertexData;
     IndexCollection indexData;
-    ComputeGeoSphere(vertexData, indexData, 6.0f, 3, false);
+    ComputeGeoSphere(vertexData, indexData, 10.0f, 6, false);
 
     const int vertexBufferSize = sizeof(VertexPositionNormalTexture) * vertexData.size();
     const int indexBufferSize = sizeof(uint16_t) * indexData.size();
