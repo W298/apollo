@@ -85,31 +85,6 @@ void Game::Update(DX::StepTimer const& timer)
 
     // TODO: Add your game logic here.
 
-    // Update color multiplier data.
-    static float rIncrement = elapsedTime / 100.f;
-    static float gIncrement = elapsedTime / 200.f;
-    static float bIncrement = elapsedTime / 300.f;
-
-    m_colorMultiplier.x += rIncrement;
-    m_colorMultiplier.y += gIncrement;
-    m_colorMultiplier.z += bIncrement;
-
-    if (m_colorMultiplier.x >= 1.0 || m_colorMultiplier.x <= 0.0)
-    {
-        m_colorMultiplier.x = m_colorMultiplier.x >= 1.0 ? 1.0 : 0.0;
-        rIncrement = -rIncrement;
-    }
-    if (m_colorMultiplier.y >= 1.0 || m_colorMultiplier.y <= 0.0)
-    {
-        m_colorMultiplier.y = m_colorMultiplier.y >= 1.0 ? 1.0 : 0.0;
-        gIncrement = -gIncrement;
-    }
-    if (m_colorMultiplier.z >= 1.0 || m_colorMultiplier.z <= 0.0)
-    {
-        m_colorMultiplier.z = m_colorMultiplier.z >= 1.0 ? 1.0 : 0.0;
-        bIncrement = -bIncrement;
-    }
-
     // Handle keyboard input.
     float verticalMove = 0.0f;
     float horizontalMove = 0.0f;
@@ -204,7 +179,6 @@ void Game::Render()
 
     // Set the constant data.
     ConstantBuffer cbData;
-    cbData.colorMultiplier = XMLoadFloat4(&m_colorMultiplier);
     cbData.worldMatrix = XMMatrixTranspose(m_worldMatrix);
     cbData.viewMatrix = XMMatrixTranspose(m_viewMatrix);
     cbData.projectionMatrix = XMMatrixTranspose(m_projectionMatrix);
@@ -221,7 +195,7 @@ void Game::Render()
     commandList->IASetIndexBuffer(&m_indexBufferView);
 
     // Draw triangle.
-    commandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
+    commandList->DrawIndexedInstanced(1536, 1, 0, 0, 0);
     baseGpuAddress += sizeof(PaddedConstantBuffer);
     ++cbIndex;
 
@@ -342,7 +316,7 @@ void Game::CreateDeviceDependentResources()
 
 	// Create root signature with one constant buffer view
     {
-        CD3DX12_ROOT_PARAMETER rootParameters[1];
+        CD3DX12_ROOT_PARAMETER rootParameters[1] = {};
         rootParameters[0].InitAsConstantBufferView(c_rootParameterCB, 0);
 
         D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
@@ -391,19 +365,24 @@ void Game::CreateDeviceDependentResources()
         auto vertexShaderBlob = DX::ReadData(L"VertexShader.cso");
         auto pixelShaderBlob = DX::ReadData(L"PixelShader.cso");
 
-        static const D3D12_INPUT_ELEMENT_DESC s_inputElementDesc[2] =
+        static const D3D12_INPUT_ELEMENT_DESC s_inputElementDesc[] =
         {
             { "POSITION",   0,  DXGI_FORMAT_R32G32B32_FLOAT,    0,  0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            { "COLOR",      0,  DXGI_FORMAT_R32G32B32_FLOAT,    0,  12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "NORMAL",      0,  DXGI_FORMAT_R32G32B32_FLOAT,    0,  12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "TEXCOORD",   0,  DXGI_FORMAT_R32G32_FLOAT,    0,  24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         };
 
         // Describe and create the graphics pipeline state object (PSO).
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+
+        CD3DX12_RASTERIZER_DESC rasterizerDesc = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+        rasterizerDesc.FillMode = D3D12_FILL_MODE_WIREFRAME;
+
         psoDesc.InputLayout = { s_inputElementDesc, _countof(s_inputElementDesc) };
         psoDesc.pRootSignature = m_rootSignature.Get();
         psoDesc.VS = { vertexShaderBlob.data(), vertexShaderBlob.size() };
         psoDesc.PS = { pixelShaderBlob.data(), pixelShaderBlob.size() };
-        psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+        psoDesc.RasterizerState = rasterizerDesc;
         psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
         psoDesc.DepthStencilState.DepthEnable = FALSE;
         psoDesc.DepthStencilState.StencilEnable = FALSE;
@@ -419,47 +398,22 @@ void Game::CreateDeviceDependentResources()
                 IID_PPV_ARGS(m_pipelineState.ReleaseAndGetAddressOf())));
     }
 
+    // Compute GeoSphere vertices and indices
+    VertexCollection vertexData;
+    IndexCollection indexData;
+    ComputeGeoSphere(vertexData, indexData, 6.0f, 3, false);
+
+    const int vertexBufferSize = sizeof(VertexPositionNormalTexture) * vertexData.size();
+    const int indexBufferSize = sizeof(uint16_t) * indexData.size();
+
     // Create vertex buffer.
     {
-        static const Vertex s_vertexData[] =
-        {
-			{ XMFLOAT3(-1.0f, 1.0f, -1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
-            { XMFLOAT3(1.0f, 1.0f, -1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
-            { XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
-            { XMFLOAT3(-1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
-
-            { XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
-            { XMFLOAT3(1.0f, -1.0f, -1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
-            { XMFLOAT3(1.0f, -1.0f, 1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
-            { XMFLOAT3(-1.0f, -1.0f, 1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
-
-            { XMFLOAT3(-1.0f, -1.0f, 1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
-            { XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
-            { XMFLOAT3(-1.0f, 1.0f, -1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
-            { XMFLOAT3(-1.0f, 1.0f, 1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
-
-            { XMFLOAT3(1.0f, -1.0f, 1.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
-            { XMFLOAT3(1.0f, -1.0f, -1.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
-            { XMFLOAT3(1.0f, 1.0f, -1.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
-            { XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(1.0f, 0.0f, 0.0f) },
-
-            { XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
-            { XMFLOAT3(1.0f, -1.0f, -1.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
-            { XMFLOAT3(1.0f, 1.0f, -1.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
-            { XMFLOAT3(-1.0f, 1.0f, -1.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
-
-            { XMFLOAT3(-1.0f, -1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
-            { XMFLOAT3(1.0f, -1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
-            { XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
-            { XMFLOAT3(-1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, 1.0f) },
-        };
-
         // Note: using upload heaps to transfer static data like vert buffers is not 
         // recommended. Every time the GPU needs it, the upload heap will be marshalled 
         // over. Please read up on Default Heap usage. An upload heap is used here for 
         // code simplicity and because there are very few verts to actually transfer.
         const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
-        const CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(s_vertexData));
+        const CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize);
 
         DX::ThrowIfFailed(
             device->CreateCommittedResource(&heapProps,
@@ -473,40 +427,19 @@ void Game::CreateDeviceDependentResources()
         UINT8* pVertexDataBegin;
         CD3DX12_RANGE readRange(0, 0);		// We do not intend to read from this resource on the CPU.
         DX::ThrowIfFailed(m_vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin)));
-        memcpy(pVertexDataBegin, s_vertexData, sizeof(s_vertexData));
+        memcpy(pVertexDataBegin, vertexData.data(), vertexBufferSize);
         m_vertexBuffer->Unmap(0, nullptr);
 
         // Initialize the vertex buffer view.
         m_vertexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
-        m_vertexBufferView.StrideInBytes = sizeof(Vertex);
-        m_vertexBufferView.SizeInBytes = sizeof(s_vertexData);
+        m_vertexBufferView.StrideInBytes = sizeof(VertexPositionNormalTexture);
+        m_vertexBufferView.SizeInBytes = vertexBufferSize;
     }
 
     // Create index buffer.
     {
-        static const uint16_t s_indexData[] =
-        {
-            3,1,0,
-            2,1,3,
-
-            6,4,5,
-            7,4,6,
-
-            11,9,8,
-            10,9,11,
-
-            14,12,13,
-            15,12,14,
-
-            19,17,16,
-            18,17,19,
-
-            22,20,21,
-            23,20,22
-        };
-
         const D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-        const CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(s_indexData));
+        const CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize);
 
     	DX::ThrowIfFailed(
             device->CreateCommittedResource(&heapProps,
@@ -520,13 +453,13 @@ void Game::CreateDeviceDependentResources()
         UINT8* pVertexDataBegin;
         CD3DX12_RANGE readRange(0, 0);		// We do not intend to read from this resource on the CPU.
         DX::ThrowIfFailed(m_indexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin)));
-        memcpy(pVertexDataBegin, s_indexData, sizeof(s_indexData));
+        memcpy(pVertexDataBegin, indexData.data(), indexBufferSize);
         m_indexBuffer->Unmap(0, nullptr);
 
         // Initialize the index buffer view.
         m_indexBufferView.BufferLocation = m_indexBuffer->GetGPUVirtualAddress();
         m_indexBufferView.Format = DXGI_FORMAT_R16_UINT;
-        m_indexBufferView.SizeInBytes = sizeof(s_indexData);
+        m_indexBufferView.SizeInBytes = indexBufferSize;
     }
 
     // Wait until assets have been uploaded to the GPU.
@@ -538,9 +471,6 @@ void Game::CreateDeviceDependentResources()
             m_deviceResources->GetCurrentFrameIndex(), 
             D3D12_FENCE_FLAG_NONE, 
             IID_PPV_ARGS(m_fence.ReleaseAndGetAddressOf())));
-
-    // Initialize values
-    m_colorMultiplier = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
 
     // Initialize camera values
     m_camUp = DEFAULT_UP_VECTOR;

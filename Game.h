@@ -49,16 +49,8 @@ public:
     void GetDefaultSize(int& width, int& height) const noexcept;
 
 private:
-
-    struct Vertex
-    {
-        DirectX::XMFLOAT3 position;
-        DirectX::XMFLOAT3 color;
-    };
-
     struct ConstantBuffer
     {
-        DirectX::XMVECTOR colorMultiplier;
         DirectX::XMMATRIX worldMatrix;
         DirectX::XMMATRIX viewMatrix;
         DirectX::XMMATRIX projectionMatrix;
@@ -123,7 +115,6 @@ private:
 
     // These computed values will be loaded into a ConstantBuffer
     // during Render
-    DirectX::XMFLOAT4                               m_colorMultiplier;
     DirectX::XMMATRIX                               m_worldMatrix;
     DirectX::XMMATRIX                               m_viewMatrix;
     DirectX::XMMATRIX                               m_projectionMatrix;
