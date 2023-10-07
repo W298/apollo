@@ -51,7 +51,9 @@ PS_OUTPUT PS(PS_INPUT input)
 PS_INPUT VS(VS_INPUT input)
 {
     PS_INPUT output;
-    output.position = mul(input.position, cb.worldMatrix);
+
+    const float4 sphere_pos = float4(normalize(input.position.xyz) * 50.0f, 1.0f);
+    output.position = mul(sphere_pos, cb.worldMatrix);
     output.position = mul(output.position, cb.viewMatrix);
     output.position = mul(output.position, cb.projectionMatrix);
 

@@ -8,6 +8,7 @@
 #include "CommonStates.h"
 #include "DDSTextureLoader.h"
 #include "DirectXHelpers.h"
+#include "GeometryGenerator.h"
 #include "ReadData.h"
 #include "ResourceUploadBatch.h"
 #include "DirectXTK12/Src/Geometry.h"
@@ -201,7 +202,7 @@ void Game::Render()
     commandList->IASetIndexBuffer(&m_indexBufferView);
 
     // Draw the sphere.
-    commandList->DrawIndexedInstanced(98304, 1, 0, 0, 0);
+    commandList->DrawIndexedInstanced(36864, 1, 0, 0, 0);
     baseGpuAddress += sizeof(PaddedConstantBuffer);
     ++cbIndex;
 
@@ -433,7 +434,7 @@ void Game::CreateDeviceDependentResources()
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
 
         CD3DX12_RASTERIZER_DESC rasterizerDesc = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-        rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
+        rasterizerDesc.FillMode = D3D12_FILL_MODE_WIREFRAME;
 
         psoDesc.InputLayout = { s_inputElementDesc, _countof(s_inputElementDesc) };
         psoDesc.pRootSignature = m_rootSignature.Get();
@@ -455,10 +456,24 @@ void Game::CreateDeviceDependentResources()
                 IID_PPV_ARGS(m_pipelineState.ReleaseAndGetAddressOf())));
     }
 
-    // Compute GeoSphere vertices and indices
+    // Compute sphere vertices and indices
+    GeometryGenerator::MeshData data = GeometryGenerator::CreateBox(100.0f, 100.0f, 100.0f, 5);
+
     VertexCollection vertexData;
+    for (GeometryGenerator::Vertex& v : data.Vertices)
+    {
+        vertexData.push_back(
+            VertexPositionNormalTexture(
+				XMFLOAT3(v.Position.x, v.Position.y, v.Position.z),
+				XMFLOAT3(v.Normal.x, v.Normal.y, v.Normal.z),
+				XMFLOAT2(v.TexC.x, v.TexC.y)));
+	}
+
     IndexCollection indexData;
-    ComputeGeoSphere(vertexData, indexData, 10.0f, 6, false);
+    for (uint16_t value : data.GetIndices16())
+    {
+	    indexData.push_back(value);
+    }
 
     const int vertexBufferSize = sizeof(VertexPositionNormalTexture) * vertexData.size();
     const int indexBufferSize = sizeof(uint16_t) * indexData.size();
@@ -540,7 +555,7 @@ void Game::CreateDeviceDependentResources()
     m_worldMatrix = XMMatrixIdentity();
 
     // Initialize the view matrix
-    m_camPosition = XMVectorSet(0.0f, 2.0f, 5.0f, 0.0f);
+    m_camPosition = XMVectorSet(0.0f, 2.0f, 100.0f, 0.0f);
     m_camLookTarget = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
     m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, DEFAULT_UP_VECTOR);
 }
