@@ -90,30 +90,15 @@ void Game::Update(DX::StepTimer const& timer)
     // TODO: Add your game logic here.
 
     // Handle keyboard input.
-    float verticalMove = 0.0f;
-    float horizontalMove = 0.0f;
-
     const auto keyboard = m_keyboard->GetState();
     if (keyboard.Escape)
     {
         ExitGame();
     }
-    else if (keyboard.W)
-    {
-        verticalMove = 3.0f * elapsedTime;
-    }
-    else if (keyboard.S)
-    {
-        verticalMove = -3.0f * elapsedTime;
-    }
-    else if (keyboard.A)
-    {
-        horizontalMove = -3.0f * elapsedTime;
-    }
-    else if (keyboard.D)
-    {
-        horizontalMove = 3.0f * elapsedTime;
-    }
+
+    const float moveSpeed = 20.0f;
+    const float verticalMove = (keyboard.W ? 1.0f : keyboard.S ? -1.0f : 0.0f) * elapsedTime * moveSpeed;
+    const float horizontalMove = (keyboard.A ? -1.0f : keyboard.D ? 1.0f : 0.0f) * elapsedTime * moveSpeed;
 
     // Handle mouse input.
     const auto mouse = m_mouse->GetState();
@@ -197,12 +182,12 @@ void Game::Render()
     commandList->SetGraphicsRootConstantBufferView(1, baseGpuAddress);
 
     // Set necessary state.
-    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
     commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
     commandList->IASetIndexBuffer(&m_indexBufferView);
 
     // Draw the sphere.
-    commandList->DrawIndexedInstanced(36864, 1, 0, 0, 0);
+    commandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
     baseGpuAddress += sizeof(PaddedConstantBuffer);
     ++cbIndex;
 
@@ -343,10 +328,7 @@ void Game::CreateDeviceDependentResources()
         samplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
         D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
-			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
-            D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
-            D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
-            D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS;
+            D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
         CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
         rootSignatureDesc.Init(_countof(rootParameters), rootParameters, 1, &samplerDesc, rootSignatureFlags);
@@ -421,6 +403,8 @@ void Game::CreateDeviceDependentResources()
     // Create the pipeline state, which includes loading shaders.
     {
         auto vertexShaderBlob = DX::ReadData(L"VertexShader.cso");
+        auto hullShaderBlob = DX::ReadData(L"HullShader.cso");
+        auto domainShaderBlob = DX::ReadData(L"DomainShader.cso");
         auto pixelShaderBlob = DX::ReadData(L"PixelShader.cso");
 
         static const D3D12_INPUT_ELEMENT_DESC s_inputElementDesc[] =
@@ -439,6 +423,8 @@ void Game::CreateDeviceDependentResources()
         psoDesc.InputLayout = { s_inputElementDesc, _countof(s_inputElementDesc) };
         psoDesc.pRootSignature = m_rootSignature.Get();
         psoDesc.VS = { vertexShaderBlob.data(), vertexShaderBlob.size() };
+        psoDesc.HS = { hullShaderBlob.data(), hullShaderBlob.size() };
+        psoDesc.DS = { domainShaderBlob.data(), domainShaderBlob.size() };
         psoDesc.PS = { pixelShaderBlob.data(), pixelShaderBlob.size() };
         psoDesc.RasterizerState = rasterizerDesc;
         psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -446,7 +432,7 @@ void Game::CreateDeviceDependentResources()
         psoDesc.DepthStencilState.StencilEnable = FALSE;
         psoDesc.DSVFormat = m_deviceResources->GetDepthBufferFormat();
         psoDesc.SampleMask = UINT_MAX;
-        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
         psoDesc.NumRenderTargets = 1;
         psoDesc.RTVFormats[0] = m_deviceResources->GetBackBufferFormat();
         psoDesc.SampleDesc.Count = 1;
@@ -457,7 +443,7 @@ void Game::CreateDeviceDependentResources()
     }
 
     // Compute sphere vertices and indices
-    GeometryGenerator::MeshData data = GeometryGenerator::CreateBox(100.0f, 100.0f, 100.0f, 5);
+    GeometryGenerator::MeshData data = GeometryGenerator::CreateBox(100.0f, 100.0f, 100.0f, 0);
 
     VertexCollection vertexData;
     for (GeometryGenerator::Vertex& v : data.Vertices)
@@ -568,7 +554,7 @@ void Game::CreateWindowSizeDependentResources()
     // Initialize the projection matrix
     auto size = m_deviceResources->GetOutputSize();
     m_projectionMatrix = XMMatrixPerspectiveFovLH(
-        XM_PIDIV4, float(size.right) / float(size.bottom), 0.01f, 100.0f);
+        XM_PIDIV4, float(size.right) / float(size.bottom), 0.01f, 1000.0f);
 
     // The frame index will be reset to zero when the window size changes
     // So we need to tell the GPU to signal our fence starting with zero
