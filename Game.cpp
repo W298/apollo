@@ -96,7 +96,7 @@ void Game::Update(DX::StepTimer const& timer)
         ExitGame();
     }
 
-    const float moveSpeed = 20.0f;
+    const float moveSpeed = 2.0f;
     const float verticalMove = (keyboard.W ? 1.0f : keyboard.S ? -1.0f : 0.0f) * elapsedTime * moveSpeed;
     const float horizontalMove = (keyboard.A ? -1.0f : keyboard.D ? 1.0f : 0.0f) * elapsedTime * moveSpeed;
 
@@ -120,6 +120,11 @@ void Game::Update(DX::StepTimer const& timer)
     m_camLookTarget = m_camPosition + m_camLookTarget;
 
     m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, m_camUp);
+
+    /*XMFLOAT4 pos;
+    XMStoreFloat4(&pos, m_camPosition);
+    OutputDebugStringW(std::to_wstring(pos.z).c_str());
+    OutputDebugStringW(L"\n");*/
 
     PIXEndEvent();
 }
@@ -175,6 +180,7 @@ void Game::Render()
     cbData.worldMatrix = XMMatrixTranspose(m_worldMatrix);
     cbData.viewMatrix = XMMatrixTranspose(m_viewMatrix);
     cbData.projectionMatrix = XMMatrixTranspose(m_projectionMatrix);
+    XMStoreFloat4(&cbData.cameraPosition, m_camPosition);
     memcpy(&m_cbMappedData[cbIndex].constants, &cbData, sizeof(ConstantBuffer));
 
     // Bind the constants to the shader.
@@ -182,12 +188,12 @@ void Game::Render()
     commandList->SetGraphicsRootConstantBufferView(1, baseGpuAddress);
 
     // Set necessary state.
-    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
+    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
     commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
     commandList->IASetIndexBuffer(&m_indexBufferView);
 
     // Draw the sphere.
-    commandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
+    commandList->DrawIndexedInstanced(m_indexCount, 1, 0, 0, 0);
     baseGpuAddress += sizeof(PaddedConstantBuffer);
     ++cbIndex;
 
@@ -345,12 +351,13 @@ void Game::CreateDeviceDependentResources()
                 IID_PPV_ARGS(m_rootSignature.ReleaseAndGetAddressOf())));
     }
 
+    // Color texture
     {
         // Load texture from file.
         ResourceUploadBatch resourceUpload(device);
         resourceUpload.Begin();
         DX::ThrowIfFailed(
-            CreateDDSTextureFromFile(device, resourceUpload, L"colormap.dds", m_texResource.ReleaseAndGetAddressOf()));
+            CreateDDSTextureFromFile(device, resourceUpload, L"colormap.dds", m_colorTexResource.ReleaseAndGetAddressOf()));
 
         auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
         uploadResourcesFinished.wait();
@@ -368,14 +375,14 @@ void Game::CreateDeviceDependentResources()
 
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
         srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        srvDesc.Format = m_texResource->GetDesc().Format;
+        srvDesc.Format = m_colorTexResource->GetDesc().Format;
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         srvDesc.Texture2D.MostDetailedMip = 0;
-        srvDesc.Texture2D.MipLevels = m_texResource->GetDesc().MipLevels;
+        srvDesc.Texture2D.MipLevels = m_colorTexResource->GetDesc().MipLevels;
         srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
 
         device->CreateShaderResourceView(
-            m_texResource.Get(), 
+            m_colorTexResource.Get(), 
             &srvDesc, 
             m_srvHeap->GetCPUDescriptorHandleForHeapStart());
     }
@@ -443,9 +450,9 @@ void Game::CreateDeviceDependentResources()
     }
 
     // Compute sphere vertices and indices
-    GeometryGenerator::MeshData data = GeometryGenerator::CreateBox(100.0f, 100.0f, 100.0f, 0);
+    GeometryGenerator::MeshData data = GeometryGenerator::CreateQuadBox(200.0f, 200.0f, 200.0f, 6);
 
-    VertexCollection vertexData;
+    std::vector<VertexPositionNormalTexture> vertexData;
     for (GeometryGenerator::Vertex& v : data.Vertices)
     {
         vertexData.push_back(
@@ -455,14 +462,15 @@ void Game::CreateDeviceDependentResources()
 				XMFLOAT2(v.TexC.x, v.TexC.y)));
 	}
 
-    IndexCollection indexData;
-    for (uint16_t value : data.GetIndices16())
+    std::vector<uint16_t> indexData;
+    for (uint16_t indices16 : data.GetIndices16())
     {
-	    indexData.push_back(value);
+        indexData.push_back(indices16);
     }
 
     const int vertexBufferSize = sizeof(VertexPositionNormalTexture) * vertexData.size();
     const int indexBufferSize = sizeof(uint16_t) * indexData.size();
+    m_indexCount = indexData.size();
 
     // Create vertex buffer.
     {
@@ -541,7 +549,7 @@ void Game::CreateDeviceDependentResources()
     m_worldMatrix = XMMatrixIdentity();
 
     // Initialize the view matrix
-    m_camPosition = XMVectorSet(0.0f, 2.0f, 100.0f, 0.0f);
+    m_camPosition = XMVectorSet(0.0f, 0.0f, 150.0f, 0.0f);
     m_camLookTarget = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
     m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, DEFAULT_UP_VECTOR);
 }

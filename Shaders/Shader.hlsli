@@ -6,6 +6,7 @@ struct ConstantBufferType
     float4x4 worldMatrix;
     float4x4 viewMatrix;
     float4x4 projectionMatrix;
+    float4 cameraPosition;
 };
 
 ConstantBuffer<ConstantBufferType> cb : register(b0);
@@ -33,8 +34,8 @@ struct PS_OUTPUT
 
 struct PatchTess
 {
-    float edgeTess[3] : SV_TessFactor;
-    float insideTess : SV_InsideTessFactor;
+    float edgeTess[4] : SV_TessFactor;
+    float insideTess[2] : SV_InsideTessFactor;
 };
 
 struct HS_OUT
@@ -56,13 +57,31 @@ SamplerState samLinear : register(s0);
 //--------------------------------------------------------------------------------------
 // Constant Hull Shader
 //--------------------------------------------------------------------------------------
-PatchTess ConstantHS(InputPatch<VS_OUTPUT, 3> input, int patchID : SV_PrimitiveID)
+PatchTess ConstantHS(InputPatch<VS_OUTPUT, 4> patch, int patchID : SV_PrimitiveID)
 {
     PatchTess output;
-    output.edgeTess[0] = 16;
-    output.edgeTess[1] = 16;
-    output.edgeTess[2] = 16;
-    output.insideTess = 32;
+
+    float3 localPos = 0.25f * (patch[0].position + patch[1].position + patch[2].position + patch[3].position);
+    float3 worldPos = mul(float4(localPos, 1.0f), cb.worldMatrix).xyz;
+
+	float dist = distance(worldPos, cb.cameraPosition);
+
+    // Tessellate the patch based on distance from the eye such that
+	// the tessellation is 0 if d >= d1 and 64 if d <= d0.  The interval
+	// [d0, d1] defines the range we tessellate in.
+	
+    const float near = 2.0f;
+    const float far = 20.0f;
+
+    float tess = max(pow(2, floor(9 * saturate((far - dist) / (far - near)))), 1);
+
+    output.edgeTess[0] = tess;
+    output.edgeTess[1] = tess;
+    output.edgeTess[2] = tess;
+    output.edgeTess[3] = tess;
+
+    output.insideTess[0] = tess;
+    output.insideTess[1] = tess;
 
     return output;
 }
@@ -71,12 +90,12 @@ PatchTess ConstantHS(InputPatch<VS_OUTPUT, 3> input, int patchID : SV_PrimitiveI
 //--------------------------------------------------------------------------------------
 // Control Point Hull Shader
 //--------------------------------------------------------------------------------------
-[domain("tri")]
+[domain("quad")]
 [partitioning("integer")]
 [outputtopology("triangle_cw")]
-[outputcontrolpoints(3)]
+[outputcontrolpoints(4)]
 [patchconstantfunc("ConstantHS")]
-HS_OUT HS(InputPatch<VS_OUTPUT, 3> input, int vertexIdx : SV_OutputControlPointID, int patchID : SV_PrimitiveID)
+HS_OUT HS(InputPatch<VS_OUTPUT, 4> input, int vertexIdx : SV_OutputControlPointID, int patchID : SV_PrimitiveID)
 {
     HS_OUT output;
     output.position = input[vertexIdx].position;
@@ -89,22 +108,32 @@ HS_OUT HS(InputPatch<VS_OUTPUT, 3> input, int vertexIdx : SV_OutputControlPointI
 //--------------------------------------------------------------------------------------
 // Domain Shader
 //--------------------------------------------------------------------------------------
-[domain("tri")]
-DS_OUT DS(const OutputPatch<HS_OUT, 3> input, float3 location : SV_DomainLocation, PatchTess patch)
+[domain("quad")]
+DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, PatchTess patch)
 {
     DS_OUT output;
+	
+	// Bilinear interpolation.
+    float3 v1 = lerp(input[0].position, input[1].position, uv.x);
+    float3 v2 = lerp(input[2].position, input[3].position, uv.x);
 
-    float3 localPos = input[0].position * location[0] + input[1].position * location[1] + input[2].position * location[2];
-    float2 texCoord = input[0].texCoord * location[0] + input[1].texCoord * location[1] + input[2].texCoord * location[2];
+    float2 t1 = lerp(input[0].texCoord, input[1].texCoord, uv.x);
+    float2 t2 = lerp(input[2].texCoord, input[3].texCoord, uv.x);
 
-    const float4 spherePos = float4(normalize(localPos.xyz) * 50.0f, 1.0f);
+    float3 position = lerp(v1, v2, uv.y);
+    float2 texCoord = lerp(t1, t2, uv.y);
+	
+	// Displacement mapping
+    // p.y = 0.3f * (p.z * sin(p.x) + p.x * cos(p.z));
 
-    output.position = mul(float4(localPos, 1.0f), cb.worldMatrix);
+    float4 spherePos = float4(normalize(position) * 100.0f, 1.0f);
+
+    output.position = mul(spherePos, cb.worldMatrix);
     output.position = mul(output.position, cb.viewMatrix);
     output.position = mul(output.position, cb.projectionMatrix);
 
     output.texCoord = texCoord;
-
+	
     return output;
 }
 
@@ -115,8 +144,9 @@ DS_OUT DS(const OutputPatch<HS_OUT, 3> input, float3 location : SV_DomainLocatio
 PS_OUTPUT PS(DS_OUT input)
 {
     PS_OUTPUT output;
-    output.color = txDiffuse.Sample(samLinear, input.texCoord);
-    return output;
+    // output.color = txDiffuse.Sample(samLinear, input.texCoord);
+    output.color = float4(1.0f, 1.0f, 1.0f, 1.0f);
+	return output;
 }
 
 

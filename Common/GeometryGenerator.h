@@ -74,6 +74,8 @@ public:
 		std::vector<uint16> mIndices16;
 	};
 
+	static MeshData CreateQuadBox(float width, float height, float depth, uint32 numSubdivisions);
+
 	///<summary>
 	/// Creates a box centered at the origin with the given dimensions, where each
     /// face has m rows and n columns of vertices.
@@ -86,7 +88,7 @@ public:
 	///</summary>
 	static MeshData CreateSphere(float radius, uint32 sliceCount, uint32 stackCount);
 
-	///<summary>
+    ///<summary>
 	/// Creates a geosphere centered at the origin with the given radius.  The
 	/// depth controls the level of tessellation.
 	///</summary>
@@ -112,6 +114,7 @@ public:
 
 private:
 	static void Subdivide(MeshData& meshData);
+	static void SubdivideQuad(MeshData& meshData);
 	static Vertex MidPoint(const Vertex& v0, const Vertex& v1);
 	static void BuildCylinderTopCap(float bottomRadius, float topRadius, float height, uint32 sliceCount, uint32 stackCount, MeshData& meshData);
 	static void BuildCylinderBottomCap(float bottomRadius, float topRadius, float height, uint32 sliceCount, uint32 stackCount, MeshData& meshData);

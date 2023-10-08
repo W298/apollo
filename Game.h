@@ -52,6 +52,7 @@ private:
         DirectX::XMMATRIX worldMatrix;
         DirectX::XMMATRIX viewMatrix;
         DirectX::XMMATRIX projectionMatrix;
+        DirectX::XMFLOAT4 cameraPosition;
     };
 
     union PaddedConstantBuffer
@@ -93,6 +94,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_indexBuffer;
     D3D12_VERTEX_BUFFER_VIEW                        m_vertexBufferView;
     D3D12_INDEX_BUFFER_VIEW                         m_indexBufferView;
+    unsigned int                                    m_indexCount;
 
     // Constant buffer objects
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_cbUploadHeap;
@@ -100,8 +102,10 @@ private:
     D3D12_GPU_VIRTUAL_ADDRESS                       m_cbGpuAddress;
 
     // Texture objects
-    Microsoft::WRL::ComPtr<ID3D12Resource>          m_texResource;
+    Microsoft::WRL::ComPtr<ID3D12Resource>          m_colorTexResource;
+    Microsoft::WRL::ComPtr<ID3D12Resource>          m_heightTexResource;
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>    m_srvHeap;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>    m_srvHeap2;
 
     // Number of draw calls
     static const unsigned int                       c_numDrawCalls = 1;
