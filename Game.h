@@ -105,7 +105,8 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_colorTexResource;
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_heightTexResource;
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>    m_srvHeap;
-    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>    m_srvHeap2;
+
+    UINT											m_cbvsrvDescSize = 0;
 
     // Number of draw calls
     static const unsigned int                       c_numDrawCalls = 1;

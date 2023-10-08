@@ -96,7 +96,7 @@ void Game::Update(DX::StepTimer const& timer)
         ExitGame();
     }
 
-    const float moveSpeed = 2.0f;
+    const float moveSpeed = 5.0f;
     const float verticalMove = (keyboard.W ? 1.0f : keyboard.S ? -1.0f : 0.0f) * elapsedTime * moveSpeed;
     const float horizontalMove = (keyboard.A ? -1.0f : keyboard.D ? 1.0f : 0.0f) * elapsedTime * moveSpeed;
 
@@ -172,7 +172,8 @@ void Game::Render()
     commandList->SetPipelineState(m_pipelineState.Get());
 
     // Set the descriptor heap containing the texture SRV.
-    commandList->SetDescriptorHeaps(1, m_srvHeap.GetAddressOf());
+    ID3D12DescriptorHeap* descHeaps[] = { m_srvHeap.Get() };
+    commandList->SetDescriptorHeaps(_countof(descHeaps), descHeaps);
     commandList->SetGraphicsRootDescriptorTable(0, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
 
     // Set the constant data.
@@ -312,13 +313,15 @@ void Game::CreateDeviceDependentResources()
 
     // TODO: Initialize device dependent objects here (independent of window size).
 
+    m_cbvsrvDescSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
 	// Create root signature with root CBV, descriptor table (with SRV) and sampler
     {
-        CD3DX12_DESCRIPTOR_RANGE descRange[1];
-        descRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+        CD3DX12_DESCRIPTOR_RANGE texTable;
+        texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0);
 
         CD3DX12_ROOT_PARAMETER rootParameters[2];
-        rootParameters[0].InitAsDescriptorTable(1, descRange, D3D12_SHADER_VISIBILITY_PIXEL);   // register (t0)
+        rootParameters[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_ALL);   // register (t0)
         rootParameters[1].InitAsConstantBufferView(0, 0);   // register (b0)
 
         D3D12_STATIC_SAMPLER_DESC samplerDesc = {}; // register (s0)
@@ -331,7 +334,7 @@ void Game::CreateDeviceDependentResources()
         samplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
         samplerDesc.MinLOD = 0;
         samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
-        samplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        samplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
         D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
             D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
@@ -351,9 +354,20 @@ void Game::CreateDeviceDependentResources()
                 IID_PPV_ARGS(m_rootSignature.ReleaseAndGetAddressOf())));
     }
 
-    // Color texture
+    // Create the SRV Heap.
     {
-        // Load texture from file.
+        D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
+        srvHeapDesc.NumDescriptors = 2;
+        srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        DX::ThrowIfFailed(
+            device->CreateDescriptorHeap(
+                &srvHeapDesc,
+                IID_PPV_ARGS(m_srvHeap.ReleaseAndGetAddressOf())));
+    }
+
+    // Load color map from file.
+    {
         ResourceUploadBatch resourceUpload(device);
         resourceUpload.Begin();
         DX::ThrowIfFailed(
@@ -361,30 +375,40 @@ void Game::CreateDeviceDependentResources()
 
         auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
         uploadResourcesFinished.wait();
+    }
 
-        // Create a descriptor heap for the texture.
-        D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-        srvHeapDesc.NumDescriptors = 1;
-        srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-
+    // Load Displacement map from file.
+    {
+        ResourceUploadBatch resourceUpload(device);
+        resourceUpload.Begin();
         DX::ThrowIfFailed(
-            device->CreateDescriptorHeap(
-                &srvHeapDesc,
-                IID_PPV_ARGS(m_srvHeap.ReleaseAndGetAddressOf())));
+            CreateDDSTextureFromFile(device, resourceUpload, L"displacement.dds", m_heightTexResource.ReleaseAndGetAddressOf()));
+
+        auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
+        uploadResourcesFinished.wait();
+    }
+
+    // Create SRVs for the textures.
+    {
+        CD3DX12_CPU_DESCRIPTOR_HANDLE descHandle(m_srvHeap->GetCPUDescriptorHandleForHeapStart());
 
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
         srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        srvDesc.Format = m_colorTexResource->GetDesc().Format;
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         srvDesc.Texture2D.MostDetailedMip = 0;
-        srvDesc.Texture2D.MipLevels = m_colorTexResource->GetDesc().MipLevels;
         srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
 
-        device->CreateShaderResourceView(
-            m_colorTexResource.Get(), 
-            &srvDesc, 
-            m_srvHeap->GetCPUDescriptorHandleForHeapStart());
+        // color map
+        srvDesc.Format = m_colorTexResource->GetDesc().Format;
+        srvDesc.Texture2D.MipLevels = m_colorTexResource->GetDesc().MipLevels;
+        device->CreateShaderResourceView(m_colorTexResource.Get(), &srvDesc, descHandle);
+
+        descHandle.Offset(1, m_cbvsrvDescSize);
+
+        // height map
+        srvDesc.Format = m_heightTexResource->GetDesc().Format;
+        srvDesc.Texture2D.MipLevels = m_heightTexResource->GetDesc().MipLevels;
+        device->CreateShaderResourceView(m_heightTexResource.Get(),&srvDesc, descHandle);
     }
 
     {
@@ -426,6 +450,7 @@ void Game::CreateDeviceDependentResources()
 
         CD3DX12_RASTERIZER_DESC rasterizerDesc = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
         rasterizerDesc.FillMode = D3D12_FILL_MODE_WIREFRAME;
+        rasterizerDesc.CullMode = D3D12_CULL_MODE_BACK;
 
         psoDesc.InputLayout = { s_inputElementDesc, _countof(s_inputElementDesc) };
         psoDesc.pRootSignature = m_rootSignature.Get();
@@ -450,7 +475,7 @@ void Game::CreateDeviceDependentResources()
     }
 
     // Compute sphere vertices and indices
-    GeometryGenerator::MeshData data = GeometryGenerator::CreateQuadBox(200.0f, 200.0f, 200.0f, 6);
+    GeometryGenerator::MeshData data = GeometryGenerator::CreateQuadBox(300.0f, 300.0f, 300.0f, 6);
 
     std::vector<VertexPositionNormalTexture> vertexData;
     for (GeometryGenerator::Vertex& v : data.Vertices)
@@ -549,7 +574,7 @@ void Game::CreateDeviceDependentResources()
     m_worldMatrix = XMMatrixIdentity();
 
     // Initialize the view matrix
-    m_camPosition = XMVectorSet(0.0f, 0.0f, 150.0f, 0.0f);
+    m_camPosition = XMVectorSet(0.0f, 0.0f, 200.0f, 0.0f);
     m_camLookTarget = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
     m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, DEFAULT_UP_VECTOR);
 }
@@ -562,7 +587,7 @@ void Game::CreateWindowSizeDependentResources()
     // Initialize the projection matrix
     auto size = m_deviceResources->GetOutputSize();
     m_projectionMatrix = XMMatrixPerspectiveFovLH(
-        XM_PIDIV4, float(size.right) / float(size.bottom), 0.01f, 1000.0f);
+        XM_PIDIV4, float(size.right) / float(size.bottom), 0.01f, 100.0f);
 
     // The frame index will be reset to zero when the window size changes
     // So we need to tell the GPU to signal our fence starting with zero

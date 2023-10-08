@@ -225,6 +225,8 @@
   <ItemGroup>
     <Image Include="colormap.dds" />
     <Image Include="directx.ico" />
+    <Image Include="displacement.dds" />
+    <Image Include="uv.dds" />
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="settings.manifest" />
