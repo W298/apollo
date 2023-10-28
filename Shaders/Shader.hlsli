@@ -76,7 +76,7 @@ PatchTess ConstantHS(InputPatch<VS_OUTPUT, 4> patch, int patchID : SV_PrimitiveI
     const float near = 2.0f;
     const float far = 50.0f;
 
-    float tess = max(pow(2, floor(9 * saturate((far - dist) / (far - near)))), 1);
+    float tess = max(pow(2, floor(8 * saturate((far - dist) / (far - near)))), 1);
 
     output.edgeTess[0] = tess;
     output.edgeTess[1] = tess;
@@ -131,9 +131,22 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
     float3 normal = lerp(n1, n2, uv.y);
     float2 texCoord = lerp(t1, t2, uv.y);
 
-    float deltaY = texMap[1].SampleLevel(samLinear, texCoord, 0).r;
-    // deltaY = 0;
-	float4 spherePos = float4(normalize(position) * (150.0f + deltaY * 8.0f), 1.0f);
+    float tess = patch.edgeTess[0];
+    float level = 8 - sqrt(tess);
+
+    float h1 = texMap[1].SampleLevel(samLinear, texCoord + float2(1, 0), level).r;
+    float h2 = texMap[1].SampleLevel(samLinear, texCoord + float2(-1, 0), level).r;
+    float h3 = texMap[1].SampleLevel(samLinear, texCoord + float2(0, 1), level).r;
+    float h4 = texMap[1].SampleLevel(samLinear, texCoord + float2(0, -1), level).r;
+    float h5 = texMap[1].SampleLevel(samLinear, texCoord + float2(1, 1), level).r;
+    float h6 = texMap[1].SampleLevel(samLinear, texCoord + float2(1, -1), level).r;
+    float h7 = texMap[1].SampleLevel(samLinear, texCoord + float2(-1, 1), level).r;
+    float h8 = texMap[1].SampleLevel(samLinear, texCoord + float2(-1, -1), level).r;
+    float h = texMap[1].SampleLevel(samLinear, texCoord, level).r;
+
+    float deltaY = (h1 + h2 + h3 + h4 + h5 + h6 + h7 + h8 + h) / 9.0f;
+    // float deltaY = 0;
+    float4 spherePos = float4(normalize(position) * (150.0f + (deltaY - 0.5f) * 0.7f), 1.0f);
 
     output.position = mul(spherePos, cb.worldMatrix);
     output.position = mul(output.position, cb.viewMatrix);
@@ -154,7 +167,11 @@ PS_OUTPUT PS(DS_OUT input)
     PS_OUTPUT output;
     // output.color = texMap[0].Sample(samLinear, input.texCoord);
     output.color = float4(0.5f, 0.5f, 0.5f, 1.0f);
-	return output;
+
+	//float lod = texMap[0].CalculateLevelOfDetail(samLinear, input.texCoord);
+    //output.color = float4(lod, 1 - lod, 0.0f, 1.0f);
+    
+    return output;
 }
 
 

@@ -96,7 +96,7 @@ void Game::Update(DX::StepTimer const& timer)
         ExitGame();
     }
 
-    const float moveSpeed = 5.0f;
+    const float moveSpeed = 50.0f;
     const float verticalMove = (keyboard.W ? 1.0f : keyboard.S ? -1.0f : 0.0f) * elapsedTime * moveSpeed;
     const float horizontalMove = (keyboard.A ? -1.0f : keyboard.D ? 1.0f : 0.0f) * elapsedTime * moveSpeed;
 
@@ -286,8 +286,8 @@ void Game::OnWindowSizeChanged(int width, int height)
 void Game::GetDefaultSize(int& width, int& height) const noexcept
 {
     // TODO: Change to desired default window size (note minimum size is 320x200).
-    width = 1280;
-    height = 720;
+    width = 3840;
+    height = 2160;
 }
 #pragma endregion
 
@@ -371,7 +371,7 @@ void Game::CreateDeviceDependentResources()
         ResourceUploadBatch resourceUpload(device);
         resourceUpload.Begin();
         DX::ThrowIfFailed(
-            CreateDDSTextureFromFile(device, resourceUpload, L"colormap.dds", m_colorTexResource.ReleaseAndGetAddressOf()));
+            CreateDDSTextureFromFile(device, resourceUpload, L"colormap_sample.dds", m_colorTexResource.ReleaseAndGetAddressOf()));
 
         auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
         uploadResourcesFinished.wait();
@@ -382,7 +382,7 @@ void Game::CreateDeviceDependentResources()
         ResourceUploadBatch resourceUpload(device);
         resourceUpload.Begin();
         DX::ThrowIfFailed(
-            CreateDDSTextureFromFile(device, resourceUpload, L"displacement.dds", m_heightTexResource.ReleaseAndGetAddressOf()));
+            CreateDDSTextureFromFile(device, resourceUpload, L"displacement_sample_float.dds", m_heightTexResource.ReleaseAndGetAddressOf()));
 
         auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
         uploadResourcesFinished.wait();
@@ -475,7 +475,7 @@ void Game::CreateDeviceDependentResources()
     }
 
     // Compute sphere vertices and indices
-    GeometryGenerator::MeshData data = GeometryGenerator::CreateQuadBox(300.0f, 300.0f, 300.0f, 6);
+    GeometryGenerator::MeshData data = GeometryGenerator::CreateQuadBox(300.0f, 300.0f, 300.0f, 8);
 
     std::vector<VertexPositionNormalTexture> vertexData;
     for (GeometryGenerator::Vertex& v : data.Vertices)
@@ -487,14 +487,10 @@ void Game::CreateDeviceDependentResources()
 				XMFLOAT2(v.TexC.x, v.TexC.y)));
 	}
 
-    std::vector<uint16_t> indexData;
-    for (uint16_t indices16 : data.GetIndices16())
-    {
-        indexData.push_back(indices16);
-    }
+    std::vector<uint32_t> indexData = std::vector<uint32_t>(data.Indices32);
 
     const int vertexBufferSize = sizeof(VertexPositionNormalTexture) * vertexData.size();
-    const int indexBufferSize = sizeof(uint16_t) * indexData.size();
+    const int indexBufferSize = sizeof(uint32_t) * indexData.size();
     m_indexCount = indexData.size();
 
     // Create vertex buffer.
@@ -549,7 +545,7 @@ void Game::CreateDeviceDependentResources()
 
         // Initialize the index buffer view.
         m_indexBufferView.BufferLocation = m_indexBuffer->GetGPUVirtualAddress();
-        m_indexBufferView.Format = DXGI_FORMAT_R16_UINT;
+        m_indexBufferView.Format = DXGI_FORMAT_R32_UINT;
         m_indexBufferView.SizeInBytes = indexBufferSize;
     }
 
@@ -587,7 +583,7 @@ void Game::CreateWindowSizeDependentResources()
     // Initialize the projection matrix
     auto size = m_deviceResources->GetOutputSize();
     m_projectionMatrix = XMMatrixPerspectiveFovLH(
-        XM_PIDIV4, float(size.right) / float(size.bottom), 0.01f, 100.0f);
+        XM_PIDIV4, float(size.right) / float(size.bottom), 0.01f, 1000.0f);
 
     // The frame index will be reset to zero when the window size changes
     // So we need to tell the GPU to signal our fence starting with zero
