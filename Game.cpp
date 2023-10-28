@@ -460,9 +460,8 @@ void Game::CreateDeviceDependentResources()
         psoDesc.PS = { pixelShaderBlob.data(), pixelShaderBlob.size() };
         psoDesc.RasterizerState = rasterizerDesc;
         psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-        psoDesc.DepthStencilState.DepthEnable = FALSE;
-        psoDesc.DepthStencilState.StencilEnable = FALSE;
-        psoDesc.DSVFormat = m_deviceResources->GetDepthBufferFormat();
+    	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+    	psoDesc.DSVFormat = m_deviceResources->GetDepthBufferFormat();
         psoDesc.SampleMask = UINT_MAX;
         psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
         psoDesc.NumRenderTargets = 1;

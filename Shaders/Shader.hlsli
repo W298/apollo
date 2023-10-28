@@ -165,8 +165,8 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
 PS_OUTPUT PS(DS_OUT input)
 {
     PS_OUTPUT output;
-    // output.color = texMap[0].Sample(samLinear, input.texCoord);
-    output.color = float4(0.5f, 0.5f, 0.5f, 1.0f);
+    output.color = texMap[0].Sample(samLinear, input.texCoord);
+    // output.color = float4(0.5f, 0.5f, 0.5f, 1.0f);
 
 	//float lod = texMap[0].CalculateLevelOfDetail(samLinear, input.texCoord);
     //output.color = float4(lod, 1 - lod, 0.0f, 1.0f);
