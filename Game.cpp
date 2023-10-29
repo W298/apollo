@@ -96,7 +96,7 @@ void Game::Update(DX::StepTimer const& timer)
         ExitGame();
     }
 
-    const float moveSpeed = 50.0f;
+    const float moveSpeed = 20.0f;
     const float verticalMove = (keyboard.W ? 1.0f : keyboard.S ? -1.0f : 0.0f) * elapsedTime * moveSpeed;
     const float horizontalMove = (keyboard.A ? -1.0f : keyboard.D ? 1.0f : 0.0f) * elapsedTime * moveSpeed;
 
@@ -371,7 +371,7 @@ void Game::CreateDeviceDependentResources()
         ResourceUploadBatch resourceUpload(device);
         resourceUpload.Begin();
         DX::ThrowIfFailed(
-            CreateDDSTextureFromFile(device, resourceUpload, L"colormap_sample.dds", m_colorTexResource.ReleaseAndGetAddressOf()));
+            CreateDDSTextureFromFile(device, resourceUpload, L"colormap16k.dds", m_colorTexResource.ReleaseAndGetAddressOf()));
 
         auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
         uploadResourcesFinished.wait();
@@ -382,7 +382,7 @@ void Game::CreateDeviceDependentResources()
         ResourceUploadBatch resourceUpload(device);
         resourceUpload.Begin();
         DX::ThrowIfFailed(
-            CreateDDSTextureFromFile(device, resourceUpload, L"displacement_sample_float.dds", m_heightTexResource.ReleaseAndGetAddressOf()));
+            CreateDDSTextureFromFile(device, resourceUpload, L"displacement16k.dds", m_heightTexResource.ReleaseAndGetAddressOf()));
 
         auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
         uploadResourcesFinished.wait();
@@ -449,7 +449,7 @@ void Game::CreateDeviceDependentResources()
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
 
         CD3DX12_RASTERIZER_DESC rasterizerDesc = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-        rasterizerDesc.FillMode = D3D12_FILL_MODE_WIREFRAME;
+        rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
         rasterizerDesc.CullMode = D3D12_CULL_MODE_BACK;
 
         psoDesc.InputLayout = { s_inputElementDesc, _countof(s_inputElementDesc) };

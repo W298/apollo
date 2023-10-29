@@ -223,13 +223,7 @@
     <ResourceCompile Include="resource.rc" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="colormap.dds" />
-    <Image Include="colormap_sample.dds" />
     <Image Include="directx.ico" />
-    <Image Include="displacement.dds" />
-    <Image Include="displacement_sample.dds" />
-    <Image Include="displacement_sample_float.dds" />
-    <Image Include="uv.dds" />
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="settings.manifest" />

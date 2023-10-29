@@ -52,24 +52,6 @@
     <Image Include="directx.ico">
       <Filter>Assets</Filter>
     </Image>
-    <Image Include="colormap.dds">
-      <Filter>Resources</Filter>
-    </Image>
-    <Image Include="displacement.dds">
-      <Filter>Resources</Filter>
-    </Image>
-    <Image Include="uv.dds">
-      <Filter>Resources</Filter>
-    </Image>
-    <Image Include="colormap_sample.dds">
-      <Filter>Resources</Filter>
-    </Image>
-    <Image Include="displacement_sample.dds">
-      <Filter>Resources</Filter>
-    </Image>
-    <Image Include="displacement_sample_float.dds">
-      <Filter>Resources</Filter>
-    </Image>
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="settings.manifest">

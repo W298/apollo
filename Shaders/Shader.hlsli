@@ -1,3 +1,5 @@
+#define PI 3.1415926538
+
 //--------------------------------------------------------------------------------------
 // Constant Buffer Variables
 //--------------------------------------------------------------------------------------
@@ -129,32 +131,28 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
 
     float3 position = lerp(v1, v2, uv.y);
     float3 normal = lerp(n1, n2, uv.y);
-    float2 texCoord = lerp(t1, t2, uv.y);
+    float2 _dummyTexCoord = lerp(t1, t2, uv.y);
 
     float tess = patch.edgeTess[0];
     float level = 8 - sqrt(tess);
 
-    float h1 = texMap[1].SampleLevel(samLinear, texCoord + float2(1, 0), level).r;
-    float h2 = texMap[1].SampleLevel(samLinear, texCoord + float2(-1, 0), level).r;
-    float h3 = texMap[1].SampleLevel(samLinear, texCoord + float2(0, 1), level).r;
-    float h4 = texMap[1].SampleLevel(samLinear, texCoord + float2(0, -1), level).r;
-    float h5 = texMap[1].SampleLevel(samLinear, texCoord + float2(1, 1), level).r;
-    float h6 = texMap[1].SampleLevel(samLinear, texCoord + float2(1, -1), level).r;
-    float h7 = texMap[1].SampleLevel(samLinear, texCoord + float2(-1, 1), level).r;
-    float h8 = texMap[1].SampleLevel(samLinear, texCoord + float2(-1, -1), level).r;
-    float h = texMap[1].SampleLevel(samLinear, texCoord, level).r;
+    float3 pointOnSphere = normalize(position);
 
-    float deltaY = (h1 + h2 + h3 + h4 + h5 + h6 + h7 + h8 + h) / 9.0f;
-    // float deltaY = 0;
-    float4 spherePos = float4(normalize(position) * (150.0f + (deltaY - 0.5f) * 0.7f), 1.0f);
+    float theta = atan2(pointOnSphere.z, pointOnSphere.x);
+    theta = theta <= 0.0f ? 2 * PI - abs(theta) : theta;
+    float phi = acos(pointOnSphere.y);
 
-    output.position = mul(spherePos, cb.worldMatrix);
+    float2 texCoord = float2(theta / (2 * PI), phi / PI);
+    const float height = texMap[1].SampleLevel(samLinear, texCoord, level).r;
+
+    output.position = mul(float4(pointOnSphere * (150.0f + height * 0.7f), 1.0f), cb.worldMatrix);
     output.position = mul(output.position, cb.viewMatrix);
     output.position = mul(output.position, cb.projectionMatrix);
 
     output.normal = float4(normal, 1.0f);
+
     output.texCoord = texCoord;
-	
+
     return output;
 }
 
