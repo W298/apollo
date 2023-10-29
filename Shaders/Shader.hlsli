@@ -1,5 +1,6 @@
 #define PI 3.1415926538
 
+
 //--------------------------------------------------------------------------------------
 // Constant Buffer Variables
 //--------------------------------------------------------------------------------------
@@ -110,6 +111,9 @@ HS_OUT HS(InputPatch<VS_OUTPUT, 4> input, int vertexIdx : SV_OutputControlPointI
     return output;
 }
 
+static const float2 size = { 2.0, 0.0 };
+static const float3 off = { -1.0, 0.0, 1.0 };
+static const float2 nTex = { 5760, 2880 };
 
 //--------------------------------------------------------------------------------------
 // Domain Shader
@@ -133,24 +137,43 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
     float3 normal = lerp(n1, n2, uv.y);
     float2 _dummyTexCoord = lerp(t1, t2, uv.y);
 
+    // Get tessellation level.
     float tess = patch.edgeTess[0];
     float level = 8 - sqrt(tess);
 
+    // Convert positions to polar coordinates.
     float3 pointOnSphere = normalize(position);
 
     float theta = atan2(pointOnSphere.z, pointOnSphere.x);
     theta = theta <= 0.0f ? 2 * PI - abs(theta) : theta;
     float phi = acos(pointOnSphere.y);
 
+    // Convert polar coordinates to texture coordinates.
     float2 texCoord = float2(theta / (2 * PI), phi / PI);
+
+    // Get height from texture.
     const float height = texMap[1].SampleLevel(samLinear, texCoord, level).r;
 
     output.position = mul(float4(pointOnSphere * (150.0f + height * 0.7f), 1.0f), cb.worldMatrix);
     output.position = mul(output.position, cb.viewMatrix);
     output.position = mul(output.position, cb.projectionMatrix);
 
-    output.normal = float4(normal, 1.0f);
+    float2 offxy = { off.x / nTex.x, off.y / nTex.y };
+    float2 offzy = { off.z / nTex.x, off.y / nTex.y };
+    float2 offyx = { off.y / nTex.x, off.x / nTex.y };
+    float2 offyz = { off.y / nTex.x, off.z / nTex.y };
 
+    float s11 = height;
+    float s01 = texMap[1].SampleLevel(samLinear, texCoord + offxy, level).r;
+    float s21 = texMap[1].SampleLevel(samLinear, texCoord + offzy, level).r;
+    float s10 = texMap[1].SampleLevel(samLinear, texCoord + offyx, level).r;
+    float s12 = texMap[1].SampleLevel(samLinear, texCoord + offyz, level).r;
+    float3 va = { size.x, size.y, s21 - s01 };
+    float3 vb = { size.y, size.x, s12 - s10 };
+    va = normalize(va);
+    vb = normalize(vb);
+
+    output.normal = float4(cross(va, vb) / 2 + 0.5, 1.0f);
     output.texCoord = texCoord;
 
     return output;
@@ -163,8 +186,9 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
 PS_OUTPUT PS(DS_OUT input)
 {
     PS_OUTPUT output;
-    output.color = texMap[0].Sample(samLinear, input.texCoord);
+    // output.color = texMap[0].Sample(samLinear, input.texCoord);
     // output.color = float4(0.5f, 0.5f, 0.5f, 1.0f);
+    output.color = input.normal;
 
 	//float lod = texMap[0].CalculateLevelOfDetail(samLinear, input.texCoord);
     //output.color = float4(lod, 1 - lod, 0.0f, 1.0f);
@@ -179,11 +203,6 @@ PS_OUTPUT PS(DS_OUT input)
 VS_OUTPUT VS(VS_INPUT input)
 {
     VS_OUTPUT output;
-
-    //const float4 sphere_pos = float4(normalize(input.position.xyz) * 50.0f, 1.0f);
-    //output.position = mul(sphere_pos, cb.worldMatrix);
-    //output.position = mul(output.position, cb.viewMatrix);
-    //output.position = mul(output.position, cb.projectionMatrix);
 
     output.position = input.position;
     output.normal = input.normal;
