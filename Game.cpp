@@ -11,7 +11,6 @@
 #include "GeometryGenerator.h"
 #include "ReadData.h"
 #include "ResourceUploadBatch.h"
-#include "DirectXTK12/Src/Geometry.h"
 
 extern void ExitGame() noexcept;
 
@@ -440,9 +439,7 @@ void Game::CreateDeviceDependentResources()
 
         static const D3D12_INPUT_ELEMENT_DESC s_inputElementDesc[] =
         {
-            { "POSITION",   0,  DXGI_FORMAT_R32G32B32_FLOAT,    0,  0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            { "NORMAL",      0,  DXGI_FORMAT_R32G32B32_FLOAT,    0,  12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            { "TEXCOORD",   0,  DXGI_FORMAT_R32G32_FLOAT,    0,  24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "POSITION",   0,  DXGI_FORMAT_R32G32B32_FLOAT,    0,  0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
         };
 
         // Describe and create the graphics pipeline state object (PSO).
@@ -476,19 +473,15 @@ void Game::CreateDeviceDependentResources()
     // Compute sphere vertices and indices
     GeometryGenerator::MeshData data = GeometryGenerator::CreateQuadBox(300.0f, 300.0f, 300.0f, 8);
 
-    std::vector<VertexPositionNormalTexture> vertexData;
+    std::vector<VertexPosition> vertexData;
     for (GeometryGenerator::Vertex& v : data.Vertices)
     {
-        vertexData.push_back(
-            VertexPositionNormalTexture(
-				XMFLOAT3(v.Position.x, v.Position.y, v.Position.z),
-				XMFLOAT3(v.Normal.x, v.Normal.y, v.Normal.z),
-				XMFLOAT2(v.TexC.x, v.TexC.y)));
+        vertexData.push_back(VertexPosition(v.Position));
 	}
 
     std::vector<uint32_t> indexData = std::vector<uint32_t>(data.Indices32);
 
-    const int vertexBufferSize = sizeof(VertexPositionNormalTexture) * vertexData.size();
+    const int vertexBufferSize = sizeof(VertexPosition) * vertexData.size();
     const int indexBufferSize = sizeof(uint32_t) * indexData.size();
     m_indexCount = indexData.size();
 
@@ -518,7 +511,7 @@ void Game::CreateDeviceDependentResources()
 
         // Initialize the vertex buffer view.
         m_vertexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
-        m_vertexBufferView.StrideInBytes = sizeof(VertexPositionNormalTexture);
+        m_vertexBufferView.StrideInBytes = sizeof(VertexPosition);
         m_vertexBufferView.SizeInBytes = vertexBufferSize;
     }
 
@@ -593,13 +586,18 @@ void Game::CreateWindowSizeDependentResources()
 void Game::OnDeviceLost()
 {
     // TODO: Add Direct3D resource cleanup here.
+
     m_rootSignature.Reset();
     m_pipelineState.Reset();
-    m_vertexBuffer.Reset();
+	m_vertexBuffer.Reset();
+    m_indexBuffer.Reset();
 
     m_cbUploadHeap.Reset();
     m_cbMappedData = nullptr;
-    m_cbGpuAddress = 0;
+
+    m_colorTexResource.Reset();
+    m_heightTexResource.Reset();
+    m_srvHeap.Reset();
 
     m_fence.Reset();
 }

@@ -8,6 +8,7 @@
 #include "Keyboard.h"
 #include "Mouse.h"
 #include "StepTimer.h"
+#include "VertexTypes.h"
 
 // A basic game implementation that creates a D3D12 device and
 // provides a game loop.
@@ -99,7 +100,7 @@ private:
     // Constant buffer objects
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_cbUploadHeap;
     PaddedConstantBuffer*                           m_cbMappedData;
-    D3D12_GPU_VIRTUAL_ADDRESS                       m_cbGpuAddress;
+    D3D12_GPU_VIRTUAL_ADDRESS                       m_cbGpuAddress = 0;
 
     // Texture objects
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_colorTexResource;
