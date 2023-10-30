@@ -47,15 +47,15 @@ struct HS_OUT
 struct DS_OUT
 {
     float4 position : SV_Position;
+    float3 normCatPos : POSITION;
     float4 normal : NORMAL;
-    float2 texCoord : TEXCOORD;
 };
 
 
 //--------------------------------------------------------------------------------------
 // Texture & Sampler Variables
 //--------------------------------------------------------------------------------------
-Texture2D texMap[2] : register(t0);
+Texture2D texMap[3] : register(t0);
 SamplerState samLinear : register(s0);
 
 
@@ -134,10 +134,9 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
 {
     DS_OUT output;
 	
-	// Bilinear interpolation.
+	// Bilinear interpolation (position).
     float3 v1 = lerp(input[0].position, input[1].position, uv.x);
     float3 v2 = lerp(input[2].position, input[3].position, uv.x);
-
     float3 position = lerp(v1, v2, uv.y);
 
     // Get tessellation level.
@@ -147,46 +146,47 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
     // range is 0 ~ 7 (mipmap has 10 levels but use only 8).
     float level = max(0, 8 - sqrt(tess) - 1);
 
-    // Convert positions to polar coordinates.
-    float3 pointOnSphere = normalize(position);
+    // Get normalized cartesian position.
+    float3 normCatPos = normalize(position);
 
-    float theta = atan2(pointOnSphere.z, pointOnSphere.x);
-    theta = theta <= 0.0f ? 2 * PI - abs(theta) : theta;
-    float phi = acos(pointOnSphere.y);
+	// Convert cartesian to polar.
+    float theta = atan2(normCatPos.z, normCatPos.x);
+    theta = sign(theta) == -1 ? 2 * PI + theta : theta;
+    float phi = acos(normCatPos.y);
 
-    // Convert polar coordinates to texture coordinates.
-    float2 texCoord = float2(theta / (2 * PI), phi / PI);
+    // Convert polar coordinates to texture coordinates for height map.
+    float2 gTexCoord = float2(theta / (2 * PI), phi / PI);
+
+    // Divide texture coordinates into two parts and re-mapping.
+    int texIndex = round(gTexCoord.x) + 2;
+    float2 sTexCoord = float2(texIndex == 0 ? gTexCoord.x * 2 : (gTexCoord.x - 0.5f) * 2.0f, gTexCoord.y);
 
     // Get height from texture.
-    const float height = texMap[1].SampleLevel(samLinear, texCoord, level).r;
+    float height = texMap[2].SampleLevel(samLinear, sTexCoord, level).r;
 
     // Calculate normal.
     float2 offxy = { off.x / nTex.x, off.y / nTex.y };
     float2 offzy = { off.z / nTex.x, off.y / nTex.y };
     float2 offyx = { off.y / nTex.x, off.x / nTex.y };
     float2 offyz = { off.y / nTex.x, off.z / nTex.y };
-
-    float s11 = height;
-    float s01 = texMap[1].SampleLevel(samLinear, texCoord + offxy, level).r;
-    float s21 = texMap[1].SampleLevel(samLinear, texCoord + offzy, level).r;
-    float s10 = texMap[1].SampleLevel(samLinear, texCoord + offyx, level).r;
-    float s12 = texMap[1].SampleLevel(samLinear, texCoord + offyz, level).r;
-
+    float s01 = texMap[2].SampleLevel(samLinear, sTexCoord + offxy, level).r;
+    float s21 = texMap[2].SampleLevel(samLinear, sTexCoord + offzy, level).r;
+    float s10 = texMap[2].SampleLevel(samLinear, sTexCoord + offyx, level).r;
+    float s12 = texMap[2].SampleLevel(samLinear, sTexCoord + offyz, level).r;
 	float3 va = { size.x, size.y, s21 - s01 };
     float3 vb = { size.y, size.x, s12 - s10 };
 	va = normalize(va);
     vb = normalize(vb);
-
     float4 normal = float4(cross(va, vb) / 2 + 0.5, 1.0f);
 
     // Multiply MVP matrices.
-    output.position = mul(float4(pointOnSphere * (150.0f + height * 0.6f), 1.0f), cb.worldMatrix);
+    output.position = mul(float4(normCatPos * (150.0f + height * 0.6f), 1.0f), cb.worldMatrix);
     output.position = mul(output.position, cb.viewMatrix);
     output.position = mul(output.position, cb.projectionMatrix);
 
-    // Set normal and texture coordinates.
+    // Set normal and normalized cartesian position for calc texture coordinates in pixel shader.
     output.normal = normal;
-    output.texCoord = texCoord;
+    output.normCatPos = normCatPos;
 
     return output;
 }
@@ -201,11 +201,23 @@ PS_OUTPUT PS(DS_OUT input)
 {
     PS_OUTPUT output;
 
+    // Convert cartesian to polar.
+    float theta = atan2(input.normCatPos.z, input.normCatPos.x);
+    theta = sign(theta) == -1 ? 2 * PI + theta : theta;
+    float phi = acos(input.normCatPos.y);
+
+    // Convert polar coordinates to texture coordinates for color map.
+    float2 gTexCoord = float2(theta / (2 * PI), phi / PI);
+
+    // Divide texture coordinates into two parts and re-mapping.
+	int texIndex = round(gTexCoord.x);
+    float2 sTexCoord = float2(texIndex == 0 ? gTexCoord.x * 2 : (gTexCoord.x - 0.5f) * 2.0f, gTexCoord.y);
+
     // [Diffuse color]
-    // output.color = texMap[0].Sample(samLinear, input.texCoord);
+    output.color = lerp(texMap[0].Sample(samLinear, sTexCoord), texMap[1].Sample(samLinear, sTexCoord), texIndex);
 
 	// [Normal map]
-    output.color = input.normal;
+    // output.color = input.normal;
 
 	// [LOD level]
     // float lod = texMap[0].CalculateLevelOfDetail(samLinear, input.texCoord);

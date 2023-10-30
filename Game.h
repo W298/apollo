@@ -103,8 +103,10 @@ private:
     D3D12_GPU_VIRTUAL_ADDRESS                       m_cbGpuAddress = 0;
 
     // Texture objects
-    Microsoft::WRL::ComPtr<ID3D12Resource>          m_colorTexResource;
-    Microsoft::WRL::ComPtr<ID3D12Resource>          m_heightTexResource;
+    Microsoft::WRL::ComPtr<ID3D12Resource>          m_colorLTexResource;
+    Microsoft::WRL::ComPtr<ID3D12Resource>          m_colorRTexResource;
+    Microsoft::WRL::ComPtr<ID3D12Resource>          m_heightLTexResource;
+    Microsoft::WRL::ComPtr<ID3D12Resource>          m_heightRTexResource;
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>    m_srvHeap;
 
     UINT											m_cbvsrvDescSize = 0;

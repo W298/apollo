@@ -95,7 +95,7 @@ void Game::Update(DX::StepTimer const& timer)
         ExitGame();
     }
 
-    const float moveSpeed = 20.0f;
+    const float moveSpeed = 120.0f;
     const float verticalMove = (keyboard.W ? 1.0f : keyboard.S ? -1.0f : 0.0f) * elapsedTime * moveSpeed;
     const float horizontalMove = (keyboard.A ? -1.0f : keyboard.D ? 1.0f : 0.0f) * elapsedTime * moveSpeed;
 
@@ -317,13 +317,13 @@ void Game::CreateDeviceDependentResources()
 	// Create root signature with root CBV, descriptor table (with SRV) and sampler
     {
         CD3DX12_DESCRIPTOR_RANGE texTable;
-        texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0);
+        texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0);
 
         CD3DX12_ROOT_PARAMETER rootParameters[2];
-        rootParameters[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_ALL);   // register (t0)
-        rootParameters[1].InitAsConstantBufferView(0, 0);   // register (b0)
+        rootParameters[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_ALL);     // register (t0)
+        rootParameters[1].InitAsConstantBufferView(0, 0);                                       // register (b0)
 
-        D3D12_STATIC_SAMPLER_DESC samplerDesc = {}; // register (s0)
+        D3D12_STATIC_SAMPLER_DESC samplerDesc = {};                                             // register (s0)
         samplerDesc.Filter = D3D12_FILTER_ANISOTROPIC;
         samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
         samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
@@ -356,7 +356,7 @@ void Game::CreateDeviceDependentResources()
     // Create the SRV Heap.
     {
         D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-        srvHeapDesc.NumDescriptors = 2;
+        srvHeapDesc.NumDescriptors = 4;
         srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         DX::ThrowIfFailed(
@@ -365,23 +365,45 @@ void Game::CreateDeviceDependentResources()
                 IID_PPV_ARGS(m_srvHeap.ReleaseAndGetAddressOf())));
     }
 
-    // Load color map from file.
+    // Load color map (L) from file.
     {
         ResourceUploadBatch resourceUpload(device);
         resourceUpload.Begin();
         DX::ThrowIfFailed(
-            CreateDDSTextureFromFile(device, resourceUpload, L"colormap16k.dds", m_colorTexResource.ReleaseAndGetAddressOf()));
+            CreateDDSTextureFromFile(device, resourceUpload, L"colormap_l.dds", m_colorLTexResource.ReleaseAndGetAddressOf()));
 
         auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
         uploadResourcesFinished.wait();
     }
 
-    // Load Displacement map from file.
+    // Load color map (R) from file.
     {
         ResourceUploadBatch resourceUpload(device);
         resourceUpload.Begin();
         DX::ThrowIfFailed(
-            CreateDDSTextureFromFile(device, resourceUpload, L"displacement16k.dds", m_heightTexResource.ReleaseAndGetAddressOf()));
+            CreateDDSTextureFromFile(device, resourceUpload, L"colormap_r.dds", m_colorRTexResource.ReleaseAndGetAddressOf()));
+
+        auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
+        uploadResourcesFinished.wait();
+    }
+
+    // Load displacement map (L) from file.
+    {
+        ResourceUploadBatch resourceUpload(device);
+        resourceUpload.Begin();
+        DX::ThrowIfFailed(
+            CreateDDSTextureFromFile(device, resourceUpload, L"displacement_l.dds", m_heightLTexResource.ReleaseAndGetAddressOf()));
+
+        auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
+        uploadResourcesFinished.wait();
+    }
+
+    // Load displacement map (R) from file.
+    {
+        ResourceUploadBatch resourceUpload(device);
+        resourceUpload.Begin();
+        DX::ThrowIfFailed(
+            CreateDDSTextureFromFile(device, resourceUpload, L"displacement_r.dds", m_heightRTexResource.ReleaseAndGetAddressOf()));
 
         auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
         uploadResourcesFinished.wait();
@@ -397,17 +419,31 @@ void Game::CreateDeviceDependentResources()
         srvDesc.Texture2D.MostDetailedMip = 0;
         srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
 
-        // color map
-        srvDesc.Format = m_colorTexResource->GetDesc().Format;
-        srvDesc.Texture2D.MipLevels = m_colorTexResource->GetDesc().MipLevels;
-        device->CreateShaderResourceView(m_colorTexResource.Get(), &srvDesc, descHandle);
+        // color map (L)
+        srvDesc.Format = m_colorLTexResource->GetDesc().Format;
+        srvDesc.Texture2D.MipLevels = m_colorLTexResource->GetDesc().MipLevels;
+        device->CreateShaderResourceView(m_colorLTexResource.Get(), &srvDesc, descHandle);
 
         descHandle.Offset(1, m_cbvsrvDescSize);
 
-        // height map
-        srvDesc.Format = m_heightTexResource->GetDesc().Format;
-        srvDesc.Texture2D.MipLevels = m_heightTexResource->GetDesc().MipLevels;
-        device->CreateShaderResourceView(m_heightTexResource.Get(),&srvDesc, descHandle);
+        // color map (R)
+        srvDesc.Format = m_colorRTexResource->GetDesc().Format;
+        srvDesc.Texture2D.MipLevels = m_colorRTexResource->GetDesc().MipLevels;
+        device->CreateShaderResourceView(m_colorRTexResource.Get(), &srvDesc, descHandle);
+
+        descHandle.Offset(1, m_cbvsrvDescSize);
+
+        // height map (L)
+        srvDesc.Format = m_heightLTexResource->GetDesc().Format;
+        srvDesc.Texture2D.MipLevels = m_heightLTexResource->GetDesc().MipLevels;
+        device->CreateShaderResourceView(m_heightLTexResource.Get(),&srvDesc, descHandle);
+
+        descHandle.Offset(1, m_cbvsrvDescSize);
+
+        // height map (L)
+        srvDesc.Format = m_heightRTexResource->GetDesc().Format;
+        srvDesc.Texture2D.MipLevels = m_heightRTexResource->GetDesc().MipLevels;
+        device->CreateShaderResourceView(m_heightRTexResource.Get(), &srvDesc, descHandle);
     }
 
     {
@@ -595,8 +631,10 @@ void Game::OnDeviceLost()
     m_cbUploadHeap.Reset();
     m_cbMappedData = nullptr;
 
-    m_colorTexResource.Reset();
-    m_heightTexResource.Reset();
+    m_colorLTexResource.Reset();
+    m_colorRTexResource.Reset();
+    m_heightLTexResource.Reset();
+    m_heightRTexResource.Reset();
     m_srvHeap.Reset();
 
     m_fence.Reset();
