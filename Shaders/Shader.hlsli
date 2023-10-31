@@ -127,7 +127,7 @@ HS_OUT HS(InputPatch<VS_OUTPUT, 4> input, int vertexIdx : SV_OutputControlPointI
 
 static const float2 size = { 2.0, 0.0 };
 static const float3 off = { -1.0, 0.0, 1.0 };
-static const float2 nTex = { 5760, 2880 };
+static const float2 nTex = { 11520, 11520 };
 
 [domain("quad")]
 DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, PatchTess patch)
@@ -162,17 +162,17 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
     float2 sTexCoord = float2(texIndex == 0 ? gTexCoord.x * 2 : (gTexCoord.x - 0.5f) * 2.0f, gTexCoord.y);
 
     // Get height from texture.
-    float height = texMap[2].SampleLevel(samLinear, sTexCoord, level).r;
+    float height = texMap[texIndex].SampleLevel(samLinear, sTexCoord, level).r;
 
     // Calculate normal.
     float2 offxy = { off.x / nTex.x, off.y / nTex.y };
     float2 offzy = { off.z / nTex.x, off.y / nTex.y };
     float2 offyx = { off.y / nTex.x, off.x / nTex.y };
     float2 offyz = { off.y / nTex.x, off.z / nTex.y };
-    float s01 = texMap[2].SampleLevel(samLinear, sTexCoord + offxy, level).r;
-    float s21 = texMap[2].SampleLevel(samLinear, sTexCoord + offzy, level).r;
-    float s10 = texMap[2].SampleLevel(samLinear, sTexCoord + offyx, level).r;
-    float s12 = texMap[2].SampleLevel(samLinear, sTexCoord + offyz, level).r;
+    float s01 = texMap[texIndex].SampleLevel(samLinear, sTexCoord + offxy, level).r;
+    float s21 = texMap[texIndex].SampleLevel(samLinear, sTexCoord + offzy, level).r;
+    float s10 = texMap[texIndex].SampleLevel(samLinear, sTexCoord + offyx, level).r;
+    float s12 = texMap[texIndex].SampleLevel(samLinear, sTexCoord + offyz, level).r;
 	float3 va = { size.x, size.y, s21 - s01 };
     float3 vb = { size.y, size.x, s12 - s10 };
 	va = normalize(va);
@@ -214,7 +214,7 @@ PS_OUTPUT PS(DS_OUT input)
     float2 sTexCoord = float2(texIndex == 0 ? gTexCoord.x * 2 : (gTexCoord.x - 0.5f) * 2.0f, gTexCoord.y);
 
     // [Diffuse color]
-    output.color = lerp(texMap[0].Sample(samLinear, sTexCoord), texMap[1].Sample(samLinear, sTexCoord), texIndex);
+    output.color = texMap[texIndex].Sample(samLinear, sTexCoord);
 
 	// [Normal map]
     // output.color = input.normal;
