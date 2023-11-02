@@ -88,42 +88,61 @@ void Game::Update(DX::StepTimer const& timer)
 
     // TODO: Add your game logic here.
 
-    // Handle keyboard input.
     const auto keyboard = m_keyboard->GetState();
     if (keyboard.Escape)
     {
         ExitGame();
     }
-
-    const float moveSpeed = 120.0f;
-    const float verticalMove = (keyboard.W ? 1.0f : keyboard.S ? -1.0f : 0.0f) * elapsedTime * moveSpeed;
-    const float horizontalMove = (keyboard.A ? -1.0f : keyboard.D ? 1.0f : 0.0f) * elapsedTime * moveSpeed;
-
-    // Handle mouse input.
     const auto mouse = m_mouse->GetState();
-    m_camYaw += mouse.x * elapsedTime / 10.0f;
-    m_camPitch += mouse.y * elapsedTime / 10.0f;
 
-    // Set view matrix based on camera position and orientation.
-    m_camRotationMatrix = XMMatrixRotationRollPitchYaw(m_camPitch, m_camYaw, 0.0f);
-    m_camLookTarget = XMVector3TransformCoord(DEFAULT_FORWARD_VECTOR, m_camRotationMatrix);
-    m_camLookTarget = XMVector3Normalize(m_camLookTarget);
+    if (keyboard.O)
+    {
+        m_orbitMode = true;
+	}
+	else if (keyboard.F)
+	{
+		m_orbitMode = false;
+	}
 
-    m_camRight = XMVector3TransformCoord(DEFAULT_RIGHT_VECTOR, m_camRotationMatrix);
-    m_camUp = XMVector3TransformCoord(DEFAULT_UP_VECTOR, m_camRotationMatrix);
-    m_camForward = XMVector3TransformCoord(DEFAULT_FORWARD_VECTOR, m_camRotationMatrix);
+    if (m_orbitMode)
+    {
+        if (mouse.leftButton)
+        {
+            m_camPosition = XMVector3TransformCoord(m_camPosition, XMMatrixRotationY(mouse.x * elapsedTime / 10.0f));
+            m_camPosition = XMVector3TransformCoord(m_camPosition, XMMatrixRotationX(-mouse.y * elapsedTime / 10.0f));
+        }
 
-    m_camPosition += horizontalMove * m_camRight;
-    m_camPosition += verticalMove * m_camForward;
+        m_camPosition = m_camPosition - XMVector3Normalize(m_camPosition) * (mouse.scrollWheelValue - m_scrollWheelValue) * elapsedTime * 10.0f;
+        m_scrollWheelValue = mouse.scrollWheelValue;
 
-    m_camLookTarget = m_camPosition + m_camLookTarget;
+        m_viewMatrix = XMMatrixLookAtLH(m_camPosition, XMVectorSet(0, 0, 0, 1), DEFAULT_UP_VECTOR);
+    }
+    else
+    {
+        const float moveSpeed = 120.0f;
+        const float verticalMove = (keyboard.W ? 1.0f : keyboard.S ? -1.0f : 0.0f) * elapsedTime * moveSpeed;
+        const float horizontalMove = (keyboard.A ? -1.0f : keyboard.D ? 1.0f : 0.0f) * elapsedTime * moveSpeed;
 
-    m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, m_camUp);
+        // Handle mouse input.
+        m_camYaw += mouse.x * elapsedTime / 10.0f;
+        m_camPitch += mouse.y * elapsedTime / 10.0f;
 
-    /*XMFLOAT4 pos;
-    XMStoreFloat4(&pos, m_camPosition);
-    OutputDebugStringW(std::to_wstring(pos.z).c_str());
-    OutputDebugStringW(L"\n");*/
+        // Set view matrix based on camera position and orientation.
+        m_camRotationMatrix = XMMatrixRotationRollPitchYaw(m_camPitch, m_camYaw, 0.0f);
+        m_camLookTarget = XMVector3TransformCoord(DEFAULT_FORWARD_VECTOR, m_camRotationMatrix);
+        m_camLookTarget = XMVector3Normalize(m_camLookTarget);
+
+        m_camRight = XMVector3TransformCoord(DEFAULT_RIGHT_VECTOR, m_camRotationMatrix);
+        m_camUp = XMVector3TransformCoord(DEFAULT_UP_VECTOR, m_camRotationMatrix);
+        m_camForward = XMVector3TransformCoord(DEFAULT_FORWARD_VECTOR, m_camRotationMatrix);
+
+        m_camPosition += horizontalMove * m_camRight;
+        m_camPosition += verticalMove * m_camForward;
+
+        m_camLookTarget = m_camPosition + m_camLookTarget;
+
+        m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, m_camUp);
+    }
 
     PIXEndEvent();
 }
@@ -181,6 +200,8 @@ void Game::Render()
     cbData.viewMatrix = XMMatrixTranspose(m_viewMatrix);
     cbData.projectionMatrix = XMMatrixTranspose(m_projectionMatrix);
     XMStoreFloat4(&cbData.cameraPosition, m_camPosition);
+    cbData.lightDirection = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
+    cbData.lightColor = XMFLOAT4(0.9f, 0.9f, 0.9f, 0.9f);
     memcpy(&m_cbMappedData[cbIndex].constants, &cbData, sizeof(ConstantBuffer));
 
     // Bind the constants to the shader.
@@ -598,9 +619,10 @@ void Game::CreateDeviceDependentResources()
     m_worldMatrix = XMMatrixIdentity();
 
     // Initialize the view matrix
-    m_camPosition = XMVectorSet(0.0f, 0.0f, 200.0f, 0.0f);
+    m_camPosition = XMVectorSet(0.0f, 0.0f, 500.0f, 0.0f);
     m_camLookTarget = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
     m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, DEFAULT_UP_VECTOR);
+    m_scrollWheelValue = 0;
 }
 
 // Allocate all memory resources that change on a window SizeChanged event.

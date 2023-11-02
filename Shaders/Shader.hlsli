@@ -6,10 +6,12 @@
 //--------------------------------------------------------------------------------------
 struct ConstantBufferType
 {
-    float4x4 worldMatrix;
-    float4x4 viewMatrix;
-    float4x4 projectionMatrix;
-    float4 cameraPosition;
+    float4x4    worldMatrix;
+    float4x4    viewMatrix;
+    float4x4    projectionMatrix;
+    float4      cameraPosition;
+    float4      lightDirection;
+    float4      lightColor;
 };
 
 ConstantBuffer<ConstantBufferType> cb : register(b0);
@@ -48,7 +50,6 @@ struct DS_OUT
 {
     float4 position : SV_Position;
     float3 normCatPos : POSITION;
-    float4 normal : NORMAL;
 };
 
 
@@ -143,8 +144,8 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
     float tess = patch.edgeTess[0];
 
     // Calculate LOD level for height map.
-    // range is 0 ~ 7 (mipmap has 10 levels but use only 8).
-    float level = max(0, 8 - sqrt(tess) - 1);
+    // range is 0 ~ 5 (mipmap has 10 levels but use only 6).
+    float level = max(0, 8 - sqrt(tess) - 3);
 
     // Get normalized cartesian position.
     float3 normCatPos = normalize(position);
@@ -164,28 +165,12 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
     // Get height from texture.
     float height = texMap[texIndex].SampleLevel(samLinear, sTexCoord, level).r;
 
-    // Calculate normal.
-    float2 offxy = { off.x / nTex.x, off.y / nTex.y };
-    float2 offzy = { off.z / nTex.x, off.y / nTex.y };
-    float2 offyx = { off.y / nTex.x, off.x / nTex.y };
-    float2 offyz = { off.y / nTex.x, off.z / nTex.y };
-    float s01 = texMap[texIndex].SampleLevel(samLinear, sTexCoord + offxy, level).r;
-    float s21 = texMap[texIndex].SampleLevel(samLinear, sTexCoord + offzy, level).r;
-    float s10 = texMap[texIndex].SampleLevel(samLinear, sTexCoord + offyx, level).r;
-    float s12 = texMap[texIndex].SampleLevel(samLinear, sTexCoord + offyz, level).r;
-	float3 va = { size.x, size.y, s21 - s01 };
-    float3 vb = { size.y, size.x, s12 - s10 };
-	va = normalize(va);
-    vb = normalize(vb);
-    float4 normal = float4(cross(va, vb) / 2 + 0.5, 1.0f);
-
     // Multiply MVP matrices.
-    output.position = mul(float4(normCatPos * (150.0f + height * 0.6f), 1.0f), cb.worldMatrix);
+    output.position = mul(float4(normCatPos * (150.0f + height * 0.5f), 1.0f), cb.worldMatrix);
     output.position = mul(output.position, cb.viewMatrix);
     output.position = mul(output.position, cb.projectionMatrix);
 
-    // Set normal and normalized cartesian position for calc texture coordinates in pixel shader.
-    output.normal = normal;
+    // Set normalized cartesian position for calc texture coordinates in pixel shader.
     output.normCatPos = normCatPos;
 
     return output;
@@ -213,11 +198,33 @@ PS_OUTPUT PS(DS_OUT input)
 	int texIndex = round(gTexCoord.x);
     float2 sTexCoord = float2(texIndex == 0 ? gTexCoord.x * 2 : (gTexCoord.x - 0.5f) * 2.0f, gTexCoord.y);
 
+    // Calculate normal.
+    float2 offxy = { off.x / nTex.x, off.y / nTex.y };
+    float2 offzy = { off.z / nTex.x, off.y / nTex.y };
+    float2 offyx = { off.y / nTex.x, off.x / nTex.y };
+    float2 offyz = { off.y / nTex.x, off.z / nTex.y };
+    float s01 = texMap[texIndex + 2].SampleLevel(samLinear, sTexCoord + offxy, 0).r;
+    float s21 = texMap[texIndex + 2].SampleLevel(samLinear, sTexCoord + offzy, 0).r;
+    float s10 = texMap[texIndex + 2].SampleLevel(samLinear, sTexCoord + offyx, 0).r;
+    float s12 = texMap[texIndex + 2].SampleLevel(samLinear, sTexCoord + offyz, 0).r;
+    float3 va = { size.x, size.y, s21 - s01 };
+    float3 vb = { size.y, size.x, s12 - s10 };
+    va = normalize(va);
+    vb = normalize(vb);
+    float4 normal = float4(cross(va, vb) / 2 + 0.5, 1.0f);
+
+    normal = normal + float4(input.normCatPos.xyz, 1.0f);
+    normalize(normal);
+    normal.w = 1.0f;
+
     // [Diffuse color]
-    output.color = texMap[texIndex].Sample(samLinear, sTexCoord);
+    float4 diffuse = texMap[texIndex].Sample(samLinear, sTexCoord);
+    float4 final = diffuse * (saturate(dot(cb.lightDirection.xyz, normal.xyz) * cb.lightColor));
+    final.a = 1;
+    output.color = final;
 
 	// [Normal map]
-    // output.color = input.normal;
+    // output.color = normal;
 
 	// [LOD level]
     // float lod = texMap[0].CalculateLevelOfDetail(samLinear, input.texCoord);

@@ -54,6 +54,8 @@ private:
         DirectX::XMMATRIX viewMatrix;
         DirectX::XMMATRIX projectionMatrix;
         DirectX::XMFLOAT4 cameraPosition;
+        DirectX::XMFLOAT4 lightDirection;
+        DirectX::XMFLOAT4 lightColor;
     };
 
     union PaddedConstantBuffer
@@ -135,6 +137,8 @@ private:
     DirectX::XMVECTOR                               m_camForward;
     float                                           m_camYaw;
     float										    m_camPitch;
+    float										    m_scrollWheelValue;
+    bool                                            m_orbitMode = false;
 
     // If using the DirectX Tool Kit for DX12, uncomment this line:
     // std::unique_ptr<DirectX::GraphicsMemory>     m_graphicsMemory;
