@@ -76,8 +76,15 @@ VS_OUTPUT VS(VS_INPUT input)
 // Constant Hull Shader
 //--------------------------------------------------------------------------------------
 
-static const float near = 2.0f;
-static const float far = 100.0f;
+static const float near = 20.0f;
+static const float far = 150.0f;
+
+float CalcTessFactor(float3 p)
+{
+    float d = distance(p, cb.cameraPosition.xyz);
+    float s = saturate((d - near) / (far - near));
+    return pow(2, -8 * pow(s, 2) + 8);
+}
 
 PatchTess ConstantHS(InputPatch<VS_OUTPUT, 4> patch, int patchID : SV_PrimitiveID)
 {
@@ -85,21 +92,25 @@ PatchTess ConstantHS(InputPatch<VS_OUTPUT, 4> patch, int patchID : SV_PrimitiveI
 
     float3 localPos = 0.25f * (patch[0].position + patch[1].position + patch[2].position + patch[3].position);
     float3 worldPos = mul(float4(localPos, 1.0f), cb.worldMatrix).xyz;
-    float3 spherePos = normalize(worldPos) * 150.0f;
 
-    float dist = distance(spherePos, cb.cameraPosition);
+    float3 p0 = normalize(patch[0].position) * 150.0f;
+    float3 p1 = normalize(patch[1].position) * 150.0f;
+    float3 p2 = normalize(patch[2].position) * 150.0f;
+    float3 p3 = normalize(patch[3].position) * 150.0f;
 
-    // Tessellate the patch based on distance.
-    // near -> 2^8, far and beyond -> 2^0
-    float tess = max(pow(2, floor(8 * saturate((far - dist) / (far - near)))), 1);
+    float3 e0 = 0.5f * (p0 + p2);
+    float3 e1 = 0.5f * (p0 + p1);
+    float3 e2 = 0.5f * (p1 + p3);
+    float3 e3 = 0.5f * (p2 + p3);
+    float3 c = normalize(worldPos) * 150.0f;
 
-    output.edgeTess[0] = tess;
-    output.edgeTess[1] = tess;
-    output.edgeTess[2] = tess;
-    output.edgeTess[3] = tess;
+    output.edgeTess[0] = CalcTessFactor(e0);
+    output.edgeTess[1] = CalcTessFactor(e1);
+    output.edgeTess[2] = CalcTessFactor(e2);
+    output.edgeTess[3] = CalcTessFactor(e3);
 
-    output.insideTess[0] = tess;
-    output.insideTess[1] = tess;
+    output.insideTess[0] = CalcTessFactor(c);
+    output.insideTess[1] = output.insideTess[0];
 
     return output;
 }

@@ -201,7 +201,7 @@ void Game::Render()
     cbData.projectionMatrix = XMMatrixTranspose(m_projectionMatrix);
     XMStoreFloat4(&cbData.cameraPosition, m_camPosition);
     cbData.lightDirection = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
-    cbData.lightColor = XMFLOAT4(0.9f, 0.9f, 0.9f, 0.9f);
+    cbData.lightColor = XMFLOAT4(0.9f, 0.9f, 0.9f, 1.0f);
     memcpy(&m_cbMappedData[cbIndex].constants, &cbData, sizeof(ConstantBuffer));
 
     // Bind the constants to the shader.
