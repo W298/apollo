@@ -218,24 +218,30 @@ PS_OUTPUT PS(DS_OUT input)
     float s21 = texMap[texIndex + 2].SampleLevel(samLinear, sTexCoord + offzy, 0).r;
     float s10 = texMap[texIndex + 2].SampleLevel(samLinear, sTexCoord + offyx, 0).r;
     float s12 = texMap[texIndex + 2].SampleLevel(samLinear, sTexCoord + offyz, 0).r;
-    float3 va = { size.x, size.y, s21 - s01 };
-    float3 vb = { size.y, size.x, s12 - s10 };
-    va = normalize(va);
-    vb = normalize(vb);
-    float4 normal = float4(cross(va, vb) / 2 + 0.5, 1.0f);
+    float3 va = normalize(float3(size.xy, s21 - s01));
+    float3 vb = normalize(float3(size.yx, s12 - s10));
+	float3 flatNormal = float3(cross(va, vb) / 2 + 0.5f);
 
-    normal = normal + float4(input.normCatPos.xyz, 1.0f);
-    normalize(normal);
-    normal.w = 1.0f;
+	flatNormal = flatNormal * 2.0f - 1.0f;
+
+    float3 N = input.normCatPos.xyz;
+    float3 T = float3(-sin(theta), 0, cos(theta));
+    float3 B = cross(N, T);
+
+    float3x3 TBN = float3x3(normalize(T), normalize(B), normalize(N));
+    float3 normal = normalize(mul(flatNormal, TBN));
 
     // [Diffuse color]
-    float4 diffuse = texMap[texIndex].Sample(samLinear, sTexCoord);
-    float4 final = diffuse * (saturate(dot(cb.lightDirection.xyz, normal.xyz) * cb.lightColor));
+    float4 texColor = texMap[texIndex].Sample(samLinear, sTexCoord);
+    float3 diffuse = max(dot(normal, cb.lightDirection.xyz), 0.0f) * cb.lightColor.xyz;
+    float3 ambient = float3(0.005f, 0.005f, 0.005f) * cb.lightColor.xyz;
+
+    float4 final = float4(saturate((diffuse + ambient) * texColor.rgb), texColor.a);
     final.a = 1;
     output.color = final;
 
 	// [Normal map]
-    // output.color = normal;
+    // output.color = float4(flatNormal, 1.0f);
 
 	// [LOD level]
     // float lod = texMap[0].CalculateLevelOfDetail(samLinear, input.texCoord);
