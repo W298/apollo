@@ -192,6 +192,41 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
 // Pixel Shader
 //--------------------------------------------------------------------------------------
 
+float3 GetNormalFromHeight(Texture2D tex, float2 sTexCoord, float multiplier)
+{
+    float2 offxy = { off.x / nTex.x, off.y / nTex.y };
+    float2 offzy = { off.z / nTex.x, off.y / nTex.y };
+    float2 offyx = { off.y / nTex.x, off.x / nTex.y };
+    float2 offyz = { off.y / nTex.x, off.z / nTex.y };
+
+    float a = tex.Sample(samLinear, sTexCoord + offxy * multiplier).r;
+    float b = tex.Sample(samLinear, sTexCoord + offzy * multiplier).r;
+    float c = tex.Sample(samLinear, sTexCoord + offyx * multiplier).r;
+    float d = tex.Sample(samLinear, sTexCoord + offyz * multiplier).r;
+
+    float3 va = normalize(float3(size.xy, b - a));
+    float3 vb = normalize(float3(size.yx, d - c));
+
+    return normalize(cross(va, vb));
+}
+
+float3 GetNormalFromHeightCross(Texture2D tex, float2 sTexCoord, float multiplier)
+{
+    float2 offxy = { -1 / nTex.x, -1 / nTex.y };
+    float2 offzy = { 1 / nTex.x, 1 / nTex.y };
+    float2 offyx = { 1 / nTex.x, -1 / nTex.y };
+    float2 offyz = { -1 / nTex.x, 1 / nTex.y };
+
+    float a = tex.Sample(samLinear, sTexCoord + offxy * multiplier).r;
+    float b = tex.Sample(samLinear, sTexCoord + offzy * multiplier).r;
+    float c = tex.Sample(samLinear, sTexCoord + offyx * multiplier).r;
+    float d = tex.Sample(samLinear, sTexCoord + offyz * multiplier).r;
+
+    float3 va = normalize(float3(size.xy, b - a));
+    float3 vb = normalize(float3(size.yx, d - c));
+
+    return normalize(cross(va, vb));
+}
 
 PS_OUTPUT PS(DS_OUT input)
 {
@@ -202,46 +237,41 @@ PS_OUTPUT PS(DS_OUT input)
     theta = sign(theta) == -1 ? 2 * PI + theta : theta;
     float phi = acos(input.normCatPos.y);
 
-    // Convert polar coordinates to texture coordinates for color map.
+    // Convert polar coordinates to texture coordinates.
     float2 gTexCoord = float2(theta / (2 * PI), phi / PI);
 
     // Divide texture coordinates into two parts and re-mapping.
 	int texIndex = round(gTexCoord.x);
     float2 sTexCoord = float2(texIndex == 0 ? gTexCoord.x * 2 : (gTexCoord.x - 0.5f) * 2.0f, gTexCoord.y);
 
-    // Calculate normal.
-    float2 offxy = { off.x / nTex.x, off.y / nTex.y };
-    float2 offzy = { off.z / nTex.x, off.y / nTex.y };
-    float2 offyx = { off.y / nTex.x, off.x / nTex.y };
-    float2 offyz = { off.y / nTex.x, off.z / nTex.y };
-    float s01 = texMap[texIndex + 2].SampleLevel(samLinear, sTexCoord + offxy, 0).r;
-    float s21 = texMap[texIndex + 2].SampleLevel(samLinear, sTexCoord + offzy, 0).r;
-    float s10 = texMap[texIndex + 2].SampleLevel(samLinear, sTexCoord + offyx, 0).r;
-    float s12 = texMap[texIndex + 2].SampleLevel(samLinear, sTexCoord + offyz, 0).r;
-    float3 va = normalize(float3(size.xy, s21 - s01));
-    float3 vb = normalize(float3(size.yx, s12 - s10));
-	float3 flatNormal = float3(cross(va, vb) / 2 + 0.5f);
+    // Calculate local normal from height map.
+    float3 n1 = GetNormalFromHeight(texMap[texIndex + 2], sTexCoord, 1.0f);
+    float3 n2 = GetNormalFromHeight(texMap[texIndex + 2], sTexCoord, 2.0f);
+	float3 n3 = GetNormalFromHeight(texMap[texIndex + 2], sTexCoord, 3.0f);
 
-	flatNormal = flatNormal * 2.0f - 1.0f;
+    float3 localNormal = (n1 * 3.0f + n2 * 2.0f + n3 * 1.0f) / 6.0f;
+    localNormal = normalize(localNormal);
 
-    float3 N = input.normCatPos.xyz;
+    // Calculate TBN Matrix.
+    float3 N = input.normCatPos;
     float3 T = float3(-sin(theta), 0, cos(theta));
     float3 B = cross(N, T);
 
+    // Calculate Normal.
     float3x3 TBN = float3x3(normalize(T), normalize(B), normalize(N));
-    float3 normal = normalize(mul(flatNormal, TBN));
+    float3 normal = normalize(mul(localNormal, TBN));
 
     // [Diffuse color]
     float4 texColor = texMap[texIndex].Sample(samLinear, sTexCoord);
     float3 diffuse = max(dot(normal, cb.lightDirection.xyz), 0.0f) * cb.lightColor.xyz;
-    float3 ambient = float3(0.005f, 0.005f, 0.005f) * cb.lightColor.xyz;
+    float3 ambient = float3(0.008f, 0.008f, 0.008f) * cb.lightColor.xyz;
 
     float4 final = float4(saturate((diffuse + ambient) * texColor.rgb), texColor.a);
     final.a = 1;
     output.color = final;
 
 	// [Normal map]
-    // output.color = float4(flatNormal, 1.0f);
+    // output.color = float4(localNormal, 1.0f);
 
 	// [LOD level]
     // float lod = texMap[0].CalculateLevelOfDetail(samLinear, input.texCoord);

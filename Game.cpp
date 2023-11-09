@@ -104,6 +104,8 @@ void Game::Update(DX::StepTimer const& timer)
 		m_orbitMode = false;
 	}
 
+    m_lightDirection = XMVector3TransformCoord(m_lightDirection, XMMatrixRotationY(elapsedTime / 6.0f));
+
     if (m_orbitMode)
     {
         if (mouse.leftButton)
@@ -200,7 +202,7 @@ void Game::Render()
     cbData.viewMatrix = XMMatrixTranspose(m_viewMatrix);
     cbData.projectionMatrix = XMMatrixTranspose(m_projectionMatrix);
     XMStoreFloat4(&cbData.cameraPosition, m_camPosition);
-    cbData.lightDirection = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
+	XMStoreFloat4(&cbData.lightDirection, m_lightDirection);
     cbData.lightColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
     memcpy(&m_cbMappedData[cbIndex].constants, &cbData, sizeof(ConstantBuffer));
 
@@ -623,6 +625,7 @@ void Game::CreateDeviceDependentResources()
     m_camLookTarget = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
     m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, DEFAULT_UP_VECTOR);
     m_scrollWheelValue = 0;
+    m_lightDirection = XMVectorSet(1.0f, 0.0f, 0.0f, 1.0f);
 }
 
 // Allocate all memory resources that change on a window SizeChanged event.

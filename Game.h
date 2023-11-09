@@ -140,6 +140,8 @@ private:
     float										    m_scrollWheelValue;
     bool                                            m_orbitMode = false;
 
+    DirectX::XMVECTOR							    m_lightDirection;
+
     // If using the DirectX Tool Kit for DX12, uncomment this line:
     // std::unique_ptr<DirectX::GraphicsMemory>     m_graphicsMemory;
 };
