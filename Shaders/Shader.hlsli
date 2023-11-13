@@ -6,12 +6,18 @@
 //--------------------------------------------------------------------------------------
 struct ConstantBufferType
 {
-    float4x4    worldMatrix;
-    float4x4    viewMatrix;
-    float4x4    projectionMatrix;
-    float4      cameraPosition;
-    float4      lightDirection;
-    float4      lightColor;
+    float4x4 worldMatrix;
+    float4x4 viewMatrix;
+    float4x4 projectionMatrix;
+    float4 cameraPosition;
+    float4 lightDirection;
+    float4 lightColor;
+    float lightNearZ;
+    float lightFarZ;
+    float3 lightPosW;
+    float4x4 shadowTransform;
+    float4x4 invViewMatrix;
+    float4x4 invProjMatrix;
 };
 
 ConstantBuffer<ConstantBufferType> cb : register(b0);
@@ -56,9 +62,9 @@ struct DS_OUT
 //--------------------------------------------------------------------------------------
 // Texture & Sampler Variables
 //--------------------------------------------------------------------------------------
-Texture2D texMap[3] : register(t0);
+Texture2D texMap[5] : register(t0);
 SamplerState samLinear : register(s0);
-
+SamplerComparisonState samShadow : register(s1);
 
 //--------------------------------------------------------------------------------------
 // Vertex Shader
@@ -204,8 +210,8 @@ float3 GetNormalFromHeight(Texture2D tex, float2 sTexCoord, float multiplier)
     float c = tex.Sample(samLinear, sTexCoord + offyx * multiplier).r;
     float d = tex.Sample(samLinear, sTexCoord + offyz * multiplier).r;
 
-    float3 va = normalize(float3(size.xy, b - a));
-    float3 vb = normalize(float3(size.yx, d - c));
+    float3 va = normalize(float3(size.xy, (b - a) * 0.5f));
+    float3 vb = normalize(float3(size.yx, (d - c) * 0.5f));
 
     return normalize(cross(va, vb));
 }
@@ -222,10 +228,75 @@ float3 GetNormalFromHeightCross(Texture2D tex, float2 sTexCoord, float multiplie
     float c = tex.Sample(samLinear, sTexCoord + offyx * multiplier).r;
     float d = tex.Sample(samLinear, sTexCoord + offyz * multiplier).r;
 
-    float3 va = normalize(float3(size.xy, b - a));
-    float3 vb = normalize(float3(size.yx, d - c));
+    float3 va = normalize(float3(size.xy, (b - a) * 0.5f));
+    float3 vb = normalize(float3(size.yx, (d - c) * 0.5f));
 
     return normalize(cross(va, vb));
+}
+
+bool CalcShadowFactor(float4 shadowPosH)
+{
+    float x = shadowPosH.x / shadowPosH.w / 2.0f + 0.5f;
+    float y = -shadowPosH.y / shadowPosH.w / 2.0f + 0.5f;
+
+    // Depth in NDC space.
+    float realDepth = shadowPosH.z / shadowPosH.w;
+    float shadowMapDepth = texMap[4].SampleLevel(samLinear, float2(x, y), 0).r;
+
+    return shadowMapDepth > realDepth;
+
+    uint width, height, numMips;
+    texMap[4].GetDimensions(0, width, height, numMips);
+
+    // Texel size.
+    float dx = 1.0f / (float) width;
+
+    float percentLit = 0.0f;
+    const float2 offsets[9] =
+    {
+        float2(-dx, -dx), float2(0.0f, -dx), float2(dx, -dx),
+        float2(-dx, 0.0f), float2(0.0f, 0.0f), float2(dx, 0.0f),
+        float2(-dx, +dx), float2(0.0f, +dx), float2(dx, +dx)
+    };
+
+    [unroll]
+    for (int i = 0; i < 9; ++i)
+    {
+        percentLit += texMap[4].SampleCmpLevelZero(samShadow, shadowPosH.xy + offsets[i], realDepth).r;
+    }
+    
+    return percentLit / 9.0f;
+}
+
+float CalcShadowFactor2(float4 shadowPosH)
+{
+    // Complete projection by doing division by w.
+    shadowPosH.xyz /= shadowPosH.w;
+
+    // Depth in NDC space.
+    float depth = shadowPosH.z;
+
+    uint width, height, numMips;
+    texMap[4].GetDimensions(0, width, height, numMips);
+
+    // Texel size.
+    float dx = 1.0f / (float) width;
+
+    float percentLit = 0.0f;
+    const float2 offsets[9] =
+    {
+        float2(-dx, -dx), float2(0.0f, -dx), float2(dx, -dx),
+        float2(-dx, 0.0f), float2(0.0f, 0.0f), float2(dx, 0.0f),
+        float2(-dx, +dx), float2(0.0f, +dx), float2(dx, +dx)
+    };
+
+    [unroll]
+    for (int i = 0; i < 9; ++i)
+    {
+        percentLit += texMap[4].SampleCmpLevelZero(samShadow, shadowPosH.xy + offsets[i], depth).r;
+    }
+    
+    return percentLit / 9.0f;
 }
 
 PS_OUTPUT PS(DS_OUT input)
@@ -266,12 +337,12 @@ PS_OUTPUT PS(DS_OUT input)
     float3 diffuse = max(dot(normal, cb.lightDirection.xyz), 0.0f) * cb.lightColor.xyz;
     float3 ambient = float3(0.008f, 0.008f, 0.008f) * cb.lightColor.xyz;
 
-    float4 final = float4(saturate((diffuse + ambient) * texColor.rgb), texColor.a);
-    final.a = 1;
-    output.color = final;
+    float height = texMap[texIndex + 2].Sample(samLinear, sTexCoord).r;
+    float shadowFactor = CalcShadowFactor2(mul(float4(input.normCatPos * (150.0f + height * 0.5f), 1.0f), cb.shadowTransform));
 
-	// [Normal map]
-    // output.color = float4(localNormal, 1.0f);
+    float4 final = float4(saturate((diffuse * (1 - shadowFactor) + ambient) * texColor.rgb), texColor.a);
+	final.a = 1;
+    output.color = final;
 
 	// [LOD level]
     // float lod = texMap[0].CalculateLevelOfDetail(samLinear, input.texCoord);

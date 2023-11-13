@@ -4,9 +4,12 @@
 
 #pragma once
 
+#include <DirectXCollision.h>
+
 #include "DeviceResources.h"
 #include "Keyboard.h"
 #include "Mouse.h"
+#include "ShadowMap.h"
 #include "StepTimer.h"
 #include "VertexTypes.h"
 
@@ -56,6 +59,12 @@ private:
         DirectX::XMFLOAT4 cameraPosition;
         DirectX::XMFLOAT4 lightDirection;
         DirectX::XMFLOAT4 lightColor;
+        float lightNearZ;
+        float lightFarZ;
+        DirectX::XMFLOAT3 lightPosW;
+        DirectX::XMMATRIX shadowTransform;
+        DirectX::XMMATRIX invViewMatrix;
+        DirectX::XMMATRIX invProjMatrix;
     };
 
     union PaddedConstantBuffer
@@ -80,6 +89,11 @@ private:
     const DirectX::XMVECTORF32 DEFAULT_FORWARD_VECTOR = { 0.f, 0.f, 1.f, 0.f };
     const DirectX::XMVECTORF32 DEFAULT_RIGHT_VECTOR = { 1.f, 0.f, 0.f, 0.f };
 
+    const DirectX::XMFLOAT4X4 IDENTITY_MATRIX = { 1.f, 0.f, 0.f, 0.f,
+    												  0.f, 1.f, 0.f, 0.f,
+    												  0.f, 0.f, 1.f, 0.f,
+    												  0.f, 0.f, 0.f, 1.f };
+
     // Device resources.
     std::unique_ptr<DX::DeviceResources>            m_deviceResources;
 
@@ -90,9 +104,12 @@ private:
     std::unique_ptr<DirectX::Keyboard>              m_keyboard;
     std::unique_ptr<DirectX::Mouse>                 m_mouse;
 
+    // PSOs
+    Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_pipelineState;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_shadowPSO;
+
     // Direct3D 12 objects
     Microsoft::WRL::ComPtr<ID3D12RootSignature>     m_rootSignature;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_pipelineState;
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_vertexBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_indexBuffer;
     D3D12_VERTEX_BUFFER_VIEW                        m_vertexBufferView;
@@ -104,6 +121,10 @@ private:
     PaddedConstantBuffer*                           m_cbMappedData;
     D3D12_GPU_VIRTUAL_ADDRESS                       m_cbGpuAddress = 0;
 
+    Microsoft::WRL::ComPtr<ID3D12Resource>          m_cbUploadHeapShadow;
+    PaddedConstantBuffer*                           m_cbMappedDataShadow;
+    D3D12_GPU_VIRTUAL_ADDRESS                       m_cbGpuAddressShadow = 0;
+
     // Texture objects
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_colorLTexResource;
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_colorRTexResource;
@@ -112,9 +133,10 @@ private:
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>    m_srvHeap;
 
     UINT											m_cbvsrvDescSize = 0;
+    UINT											m_dsvDescSize = 0;
 
     // Number of draw calls
-    static const unsigned int                       c_numDrawCalls = 1;
+    static const unsigned int                       c_numDrawCalls = 2;
 
     // A synchronization fence and an event. These members will be used
     // to synchronize the CPU with the GPU so that there will be no
@@ -141,6 +163,16 @@ private:
     bool                                            m_orbitMode = false;
 
     DirectX::XMVECTOR							    m_lightDirection;
+
+    std::unique_ptr<ShadowMap>  			        m_shadowMap;
+    DirectX::BoundingSphere                         m_sceneBounds;
+
+    float                                           mLightNearZ = 0.0f;
+    float                                           mLightFarZ = 0.0f;
+    DirectX::XMFLOAT3                               mLightPosW;
+    DirectX::XMFLOAT4X4                             mLightView = IDENTITY_MATRIX;
+    DirectX::XMFLOAT4X4                             mLightProj = IDENTITY_MATRIX;
+    DirectX::XMFLOAT4X4                             mShadowTransform = IDENTITY_MATRIX;
 
     // If using the DirectX Tool Kit for DX12, uncomment this line:
     // std::unique_ptr<DirectX::GraphicsMemory>     m_graphicsMemory;

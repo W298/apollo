@@ -5,6 +5,8 @@
 #include "pch.h"
 #include "Game.h"
 
+#include <array>
+
 #include "CommonStates.h"
 #include "DDSTextureLoader.h"
 #include "DirectXHelpers.h"
@@ -104,7 +106,7 @@ void Game::Update(DX::StepTimer const& timer)
 		m_orbitMode = false;
 	}
 
-    m_lightDirection = XMVector3TransformCoord(m_lightDirection, XMMatrixRotationY(elapsedTime / 6.0f));
+    // m_lightDirection = XMVector3TransformCoord(m_lightDirection, XMMatrixRotationY(elapsedTime / 6.0f));
 
     if (m_orbitMode)
     {
@@ -145,6 +147,60 @@ void Game::Update(DX::StepTimer const& timer)
 
         m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, m_camUp);
     }
+
+
+
+
+
+
+
+    // Update Shadow Transform
+    {
+        // Only the first "main" light casts a shadow.
+        XMVECTOR lightDir = m_lightDirection;
+        XMVECTOR lightPos = -3.0f * m_sceneBounds.Radius * lightDir;
+        XMVECTOR targetPos = XMLoadFloat3(&m_sceneBounds.Center);
+        XMVECTOR lightUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+        XMMATRIX lightView = XMMatrixLookAtLH(lightPos, targetPos, lightUp);
+
+        XMStoreFloat3(&mLightPosW, lightPos);
+
+        // Transform bounding sphere to light space.
+        XMFLOAT3 sphereCenterLS;
+        XMStoreFloat3(&sphereCenterLS, XMVector3TransformCoord(targetPos, lightView));
+
+        // Ortho frustum in light space encloses scene.
+        float l = sphereCenterLS.x - m_sceneBounds.Radius;
+        float b = sphereCenterLS.y - m_sceneBounds.Radius;
+        float n = sphereCenterLS.z - m_sceneBounds.Radius;
+        float r = sphereCenterLS.x + m_sceneBounds.Radius;
+        float t = sphereCenterLS.y + m_sceneBounds.Radius;
+        float f = sphereCenterLS.z + m_sceneBounds.Radius;
+
+        mLightNearZ = n;
+        mLightFarZ = f;
+        XMMATRIX lightProj = XMMatrixOrthographicOffCenterLH(l, r, b, t, n, f);
+
+        // Transform NDC space [-1,+1]^2 to texture space [0,1]^2
+        XMMATRIX T(
+            0.5f, 0.0f, 0.0f, 0.0f,
+            0.0f, -0.5f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f,
+            0.5f, 0.5f, 0.0f, 1.0f);
+
+        XMMATRIX S = lightView * lightProj * T;
+        XMStoreFloat4x4(&mLightView, lightView);
+        XMStoreFloat4x4(&mLightProj, lightProj);
+        XMStoreFloat4x4(&mShadowTransform, S);
+    }
+
+
+
+
+
+
+
+
 
     PIXEndEvent();
 }
@@ -189,25 +245,114 @@ void Game::Render()
 
     // Set the root signature and pipeline state.
     commandList->SetGraphicsRootSignature(m_rootSignature.Get());
-    commandList->SetPipelineState(m_pipelineState.Get());
 
     // Set the descriptor heap containing the texture SRV.
     ID3D12DescriptorHeap* descHeaps[] = { m_srvHeap.Get() };
     commandList->SetDescriptorHeaps(_countof(descHeaps), descHeaps);
     commandList->SetGraphicsRootDescriptorTable(0, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
 
+
+
+
+
+
     // Set the constant data.
     ConstantBuffer cbData;
+
+    XMMATRIX view = XMLoadFloat4x4(&mLightView);
+    XMMATRIX proj = XMLoadFloat4x4(&mLightProj);
+
+    auto dv = XMMatrixDeterminant(view);
+    auto dp = XMMatrixDeterminant(proj);
+    XMMATRIX invView = XMMatrixInverse(&dv, view);
+    XMMATRIX invProj = XMMatrixInverse(&dp, proj);
+
+    UINT w = m_shadowMap->Width();
+    UINT h = m_shadowMap->Height();
+
+    cbData.worldMatrix = XMMatrixTranspose(m_worldMatrix);
+    cbData.viewMatrix = XMMatrixTranspose(view);
+    cbData.invViewMatrix = XMMatrixTranspose(invView);
+
+    cbData.projectionMatrix = XMMatrixTranspose(proj);
+    cbData.invProjMatrix = XMMatrixTranspose(invProj);
+
+    cbData.lightPosW = mLightPosW;
+    cbData.lightNearZ = mLightNearZ;
+    cbData.lightFarZ = mLightFarZ;
+
+    XMMATRIX shadowTransform = XMLoadFloat4x4(&mShadowTransform);
+    cbData.shadowTransform = XMMatrixTranspose(shadowTransform);
+
+    memcpy(&m_cbMappedDataShadow[cbIndex].constants, &cbData, sizeof(ConstantBuffer));
+
+    // Bind the constants to the shader.
+    auto baseGpuAddress = m_cbGpuAddressShadow + sizeof(PaddedConstantBuffer) * cbIndex;
+    commandList->SetGraphicsRootConstantBufferView(2, baseGpuAddress);
+
+    {
+        auto vp = m_shadowMap->Viewport();
+        auto sr = m_shadowMap->ScissorRect();
+
+        commandList->RSSetViewports(1, &vp);
+        commandList->RSSetScissorRects(1, &sr);
+
+        CD3DX12_RESOURCE_BARRIER tr = CD3DX12_RESOURCE_BARRIER::Transition(m_shadowMap->Resource(),
+        D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+        // Change to DEPTH_WRITE.
+        commandList->ResourceBarrier(1, &tr);
+
+        // Clear the back buffer and depth buffer.
+        commandList->ClearDepthStencilView(m_shadowMap->Dsv(),
+            D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+
+        // Set null render target because we are only going to draw to
+        // depth buffer.  Setting a null render target will disable color writes.
+        // Note the active PSO also must specify a render target count of 0.
+        auto dsv = m_shadowMap->Dsv();
+        commandList->OMSetRenderTargets(0, nullptr, false, &dsv);
+
+        commandList->SetPipelineState(m_shadowPSO.Get());
+
+
+
+        // Set necessary state.
+        commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
+        commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
+        commandList->IASetIndexBuffer(&m_indexBufferView);
+
+        // Draw the sphere.
+        commandList->DrawIndexedInstanced(m_indexCount, 1, 0, 0, 0);
+
+
+
+        // Change back to GENERIC_READ so we can read the texture in a shader.
+        CD3DX12_RESOURCE_BARRIER tr2 = CD3DX12_RESOURCE_BARRIER::Transition(m_shadowMap->Resource(),
+            D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ);
+        commandList->ResourceBarrier(1, &tr2);
+    }
+
+
+
+
+
+
+
+
+
+    Clear();
+
+    commandList->SetPipelineState(m_pipelineState.Get());
+
     cbData.worldMatrix = XMMatrixTranspose(m_worldMatrix);
     cbData.viewMatrix = XMMatrixTranspose(m_viewMatrix);
     cbData.projectionMatrix = XMMatrixTranspose(m_projectionMatrix);
     XMStoreFloat4(&cbData.cameraPosition, m_camPosition);
-	XMStoreFloat4(&cbData.lightDirection, m_lightDirection);
+    XMStoreFloat4(&cbData.lightDirection, m_lightDirection);
     cbData.lightColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
     memcpy(&m_cbMappedData[cbIndex].constants, &cbData, sizeof(ConstantBuffer));
 
-    // Bind the constants to the shader.
-    auto baseGpuAddress = m_cbGpuAddress + sizeof(PaddedConstantBuffer) * cbIndex;
+    baseGpuAddress = m_cbGpuAddress + sizeof(PaddedConstantBuffer) * cbIndex;
     commandList->SetGraphicsRootConstantBufferView(1, baseGpuAddress);
 
     // Set necessary state.
@@ -217,8 +362,6 @@ void Game::Render()
 
     // Draw the sphere.
     commandList->DrawIndexedInstanced(m_indexCount, 1, 0, 0, 0);
-    baseGpuAddress += sizeof(PaddedConstantBuffer);
-    ++cbIndex;
 
     PIXEndEvent(commandList);
 
@@ -308,8 +451,8 @@ void Game::OnWindowSizeChanged(int width, int height)
 void Game::GetDefaultSize(int& width, int& height) const noexcept
 {
     // TODO: Change to desired default window size (note minimum size is 320x200).
-    width = 3840;
-    height = 2160;
+    width = 2560;
+    height = 1440;
 }
 #pragma endregion
 
@@ -335,34 +478,59 @@ void Game::CreateDeviceDependentResources()
 
     // TODO: Initialize device dependent objects here (independent of window size).
 
+    // Initialize Shadow Map Instance
+    m_shadowMap = std::make_unique<ShadowMap>(m_deviceResources->GetD3DDevice(), 16384, 16384);
+
+    // Initialize Bounds
+    m_sceneBounds.Center = XMFLOAT3(0.0f, 0.0f, 0.0f);
+    m_sceneBounds.Radius = 160.0f;
+
     m_cbvsrvDescSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_dsvDescSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 
 	// Create root signature with root CBV, descriptor table (with SRV) and sampler
     {
         CD3DX12_DESCRIPTOR_RANGE texTable;
-        texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0);
+        texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0);
 
-        CD3DX12_ROOT_PARAMETER rootParameters[2];
+        CD3DX12_ROOT_PARAMETER rootParameters[3];
         rootParameters[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_ALL);     // register (t0)
-        rootParameters[1].InitAsConstantBufferView(0, 0);                                       // register (b0)
+        rootParameters[1].InitAsConstantBufferView(0);                                          // register (c0)
+        rootParameters[2].InitAsConstantBufferView(1);                                          // register (c0)
 
-        D3D12_STATIC_SAMPLER_DESC samplerDesc = {};                                             // register (s0)
-        samplerDesc.Filter = D3D12_FILTER_ANISOTROPIC;
-        samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-        samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-        samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-        samplerDesc.MaxAnisotropy = 16;
-        samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
-        samplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
-        samplerDesc.MinLOD = 0;
-        samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
-        samplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        const CD3DX12_STATIC_SAMPLER_DESC anisotropicWrap(
+			0, // shaderRegister
+			D3D12_FILTER_ANISOTROPIC, // filter
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressU
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressV
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressW
+			0.0f,                               // mipLODBias
+			16,                                 // maxAnisotropy
+			D3D12_COMPARISON_FUNC_LESS_EQUAL,
+			D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE,
+			0.0f,                               // minLOD
+			D3D12_FLOAT32_MAX,                  // maxLOD
+			D3D12_SHADER_VISIBILITY_ALL
+		);
+
+        const CD3DX12_STATIC_SAMPLER_DESC shadow(
+            1, // shaderRegister
+            D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, // filter
+            D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressU
+            D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressV
+            D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressW
+            0.0f,                               // mipLODBias
+            16,                                 // maxAnisotropy
+            D3D12_COMPARISON_FUNC_LESS_EQUAL,
+            D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK);
+
+        std::array<const CD3DX12_STATIC_SAMPLER_DESC, 2> staticSamplers = { anisotropicWrap, shadow };
 
         D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
             D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
         CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
-        rootSignatureDesc.Init(_countof(rootParameters), rootParameters, 1, &samplerDesc, rootSignatureFlags);
+        rootSignatureDesc.Init(_countof(rootParameters), rootParameters, (UINT)staticSamplers.size(), staticSamplers.data(), rootSignatureFlags);
 
         ComPtr<ID3DBlob> signature;
         ComPtr<ID3DBlob> error;
@@ -379,7 +547,7 @@ void Game::CreateDeviceDependentResources()
     // Create the SRV Heap.
     {
         D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-        srvHeapDesc.NumDescriptors = 4;
+        srvHeapDesc.NumDescriptors = 5;
         srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         DX::ThrowIfFailed(
@@ -463,10 +631,15 @@ void Game::CreateDeviceDependentResources()
 
         descHandle.Offset(1, m_cbvsrvDescSize);
 
-        // height map (L)
+        // height map (R)
         srvDesc.Format = m_heightRTexResource->GetDesc().Format;
         srvDesc.Texture2D.MipLevels = m_heightRTexResource->GetDesc().MipLevels;
         device->CreateShaderResourceView(m_heightRTexResource.Get(), &srvDesc, descHandle);
+
+        m_shadowMap->BuildDescriptors(
+            CD3DX12_CPU_DESCRIPTOR_HANDLE(m_srvHeap->GetCPUDescriptorHandleForHeapStart(), 4, m_cbvsrvDescSize),
+            CD3DX12_GPU_DESCRIPTOR_HANDLE(m_srvHeap->GetGPUDescriptorHandleForHeapStart(), 4, m_cbvsrvDescSize),
+            CD3DX12_CPU_DESCRIPTOR_HANDLE(m_deviceResources->GetDepthStencilView(), 1, m_dsvDescSize));
     }
 
     {
@@ -487,6 +660,26 @@ void Game::CreateDeviceDependentResources()
         // Map the CPU and GPU addresses.
         DX::ThrowIfFailed(m_cbUploadHeap->Map(0, nullptr, reinterpret_cast<void**>(&m_cbMappedData)));
         m_cbGpuAddress = m_cbUploadHeap->GetGPUVirtualAddress();
+    }
+
+    {
+        // Create the constant buffer memory 2
+        CD3DX12_HEAP_PROPERTIES uploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
+        size_t const cbSize = c_numDrawCalls * m_deviceResources->GetBackBufferCount() * sizeof(PaddedConstantBuffer);
+
+        CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(cbSize);
+        DX::ThrowIfFailed(
+            device->CreateCommittedResource(
+                &uploadHeapProperties,
+                D3D12_HEAP_FLAG_NONE,
+                &resourceDesc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(m_cbUploadHeapShadow.ReleaseAndGetAddressOf())));
+
+        // Map the CPU and GPU addresses.
+        DX::ThrowIfFailed(m_cbUploadHeapShadow->Map(0, nullptr, reinterpret_cast<void**>(&m_cbMappedDataShadow)));
+        m_cbGpuAddressShadow = m_cbUploadHeapShadow->GetGPUVirtualAddress();
     }
 
     // Create the pipeline state, which includes loading shaders.
@@ -517,7 +710,7 @@ void Game::CreateDeviceDependentResources()
         psoDesc.RasterizerState = rasterizerDesc;
         psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
     	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-    	psoDesc.DSVFormat = m_deviceResources->GetDepthBufferFormat();
+    	psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
         psoDesc.SampleMask = UINT_MAX;
         psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
         psoDesc.NumRenderTargets = 1;
@@ -527,6 +720,31 @@ void Game::CreateDeviceDependentResources()
             device->CreateGraphicsPipelineState(
                 &psoDesc,
                 IID_PPV_ARGS(m_pipelineState.ReleaseAndGetAddressOf())));
+
+
+        // Create Shadow Map PSO
+        auto shadowVSBlob = DX::ReadData(L"ShadowVS.cso");
+        auto shadowHSBlob = DX::ReadData(L"ShadowHS.cso");
+        auto shadowDSBlob = DX::ReadData(L"ShadowDS.cso");
+        auto shadowPSBlob = DX::ReadData(L"ShadowPS.cso");
+
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC smapPsoDesc = D3D12_GRAPHICS_PIPELINE_STATE_DESC(psoDesc);
+        smapPsoDesc.RasterizerState.DepthBias = 100000;
+        smapPsoDesc.RasterizerState.DepthBiasClamp = 0.0f;
+        smapPsoDesc.RasterizerState.SlopeScaledDepthBias = 0.1f;
+        smapPsoDesc.pRootSignature = m_rootSignature.Get();
+        smapPsoDesc.VS = { shadowVSBlob.data(), shadowVSBlob.size() };
+        smapPsoDesc.HS = { shadowHSBlob.data(), shadowHSBlob.size() };
+        smapPsoDesc.DS = { shadowDSBlob.data(), shadowDSBlob.size() };
+        smapPsoDesc.PS = { shadowPSBlob.data(), shadowPSBlob.size() };
+
+        // Shadow map pass does not have a render target.
+        smapPsoDesc.RTVFormats[0] = DXGI_FORMAT_UNKNOWN;
+        smapPsoDesc.NumRenderTargets = 0;
+        DX::ThrowIfFailed(
+            device->CreateGraphicsPipelineState(
+                &smapPsoDesc,
+                IID_PPV_ARGS(m_shadowPSO.ReleaseAndGetAddressOf())));
     }
 
     // Compute sphere vertices and indices
@@ -625,7 +843,7 @@ void Game::CreateDeviceDependentResources()
     m_camLookTarget = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
     m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, DEFAULT_UP_VECTOR);
     m_scrollWheelValue = 0;
-    m_lightDirection = XMVectorSet(1.0f, 0.0f, 0.0f, 1.0f);
+    m_lightDirection = XMVectorSet(1.0f, 1.0f, 0.0f, 1.0f);
 }
 
 // Allocate all memory resources that change on a window SizeChanged event.

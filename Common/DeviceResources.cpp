@@ -230,7 +230,7 @@ void DeviceResources::CreateDeviceResources()
     if (m_depthBufferFormat != DXGI_FORMAT_UNKNOWN)
     {
         D3D12_DESCRIPTOR_HEAP_DESC dsvDescriptorHeapDesc = {};
-        dsvDescriptorHeapDesc.NumDescriptors = 1;
+        dsvDescriptorHeapDesc.NumDescriptors = 2;
         dsvDescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 
         ThrowIfFailed(m_d3dDevice->CreateDescriptorHeap(&dsvDescriptorHeapDesc, IID_PPV_ARGS(m_dsvDescriptorHeap.ReleaseAndGetAddressOf())));
