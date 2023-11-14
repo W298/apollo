@@ -106,7 +106,7 @@ void Game::Update(DX::StepTimer const& timer)
 		m_orbitMode = false;
 	}
 
-    // m_lightDirection = XMVector3TransformCoord(m_lightDirection, XMMatrixRotationY(elapsedTime / 6.0f));
+    m_lightDirection = XMVector3TransformCoord(m_lightDirection, XMMatrixRotationY(elapsedTime / 12.0f));
 
     if (m_orbitMode)
     {
@@ -123,7 +123,7 @@ void Game::Update(DX::StepTimer const& timer)
     }
     else
     {
-        const float moveSpeed = 120.0f;
+        const float moveSpeed = 60.0f;
         const float verticalMove = (keyboard.W ? 1.0f : keyboard.S ? -1.0f : 0.0f) * elapsedTime * moveSpeed;
         const float horizontalMove = (keyboard.A ? -1.0f : keyboard.D ? 1.0f : 0.0f) * elapsedTime * moveSpeed;
 
@@ -146,6 +146,10 @@ void Game::Update(DX::StepTimer const& timer)
         m_camLookTarget = m_camPosition + m_camLookTarget;
 
         m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, m_camUp);
+
+        m_shadowBias += (mouse.scrollWheelValue - m_scrollWheelValue) * elapsedTime / 10.0f;
+        m_scrollWheelValue = mouse.scrollWheelValue;
+        OutputDebugStringW((std::to_wstring(m_shadowBias) + L"\n").c_str());
     }
 
 
@@ -158,7 +162,7 @@ void Game::Update(DX::StepTimer const& timer)
     {
         // Only the first "main" light casts a shadow.
         XMVECTOR lightDir = m_lightDirection;
-        XMVECTOR lightPos = -3.0f * m_sceneBounds.Radius * lightDir;
+        XMVECTOR lightPos = -2.0f * m_sceneBounds.Radius * lightDir;
         XMVECTOR targetPos = XMLoadFloat3(&m_sceneBounds.Center);
         XMVECTOR lightUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
         XMMATRIX lightView = XMMatrixLookAtLH(lightPos, targetPos, lightUp);
@@ -262,24 +266,9 @@ void Game::Render()
     XMMATRIX view = XMLoadFloat4x4(&mLightView);
     XMMATRIX proj = XMLoadFloat4x4(&mLightProj);
 
-    auto dv = XMMatrixDeterminant(view);
-    auto dp = XMMatrixDeterminant(proj);
-    XMMATRIX invView = XMMatrixInverse(&dv, view);
-    XMMATRIX invProj = XMMatrixInverse(&dp, proj);
-
-    UINT w = m_shadowMap->Width();
-    UINT h = m_shadowMap->Height();
-
     cbData.worldMatrix = XMMatrixTranspose(m_worldMatrix);
     cbData.viewMatrix = XMMatrixTranspose(view);
-    cbData.invViewMatrix = XMMatrixTranspose(invView);
-
     cbData.projectionMatrix = XMMatrixTranspose(proj);
-    cbData.invProjMatrix = XMMatrixTranspose(invProj);
-
-    cbData.lightPosW = mLightPosW;
-    cbData.lightNearZ = mLightNearZ;
-    cbData.lightFarZ = mLightFarZ;
 
     XMMATRIX shadowTransform = XMLoadFloat4x4(&mShadowTransform);
     cbData.shadowTransform = XMMatrixTranspose(shadowTransform);
@@ -350,6 +339,7 @@ void Game::Render()
     XMStoreFloat4(&cbData.cameraPosition, m_camPosition);
     XMStoreFloat4(&cbData.lightDirection, m_lightDirection);
     cbData.lightColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+    cbData.shadowBias = m_shadowBias;
     memcpy(&m_cbMappedData[cbIndex].constants, &cbData, sizeof(ConstantBuffer));
 
     baseGpuAddress = m_cbGpuAddress + sizeof(PaddedConstantBuffer) * cbIndex;
@@ -479,7 +469,7 @@ void Game::CreateDeviceDependentResources()
     // TODO: Initialize device dependent objects here (independent of window size).
 
     // Initialize Shadow Map Instance
-    m_shadowMap = std::make_unique<ShadowMap>(m_deviceResources->GetD3DDevice(), 16384, 16384);
+    m_shadowMap = std::make_unique<ShadowMap>(m_deviceResources->GetD3DDevice(), 8192, 8192);
 
     // Initialize Bounds
     m_sceneBounds.Center = XMFLOAT3(0.0f, 0.0f, 0.0f);
@@ -731,7 +721,7 @@ void Game::CreateDeviceDependentResources()
         D3D12_GRAPHICS_PIPELINE_STATE_DESC smapPsoDesc = D3D12_GRAPHICS_PIPELINE_STATE_DESC(psoDesc);
         smapPsoDesc.RasterizerState.DepthBias = 100000;
         smapPsoDesc.RasterizerState.DepthBiasClamp = 0.0f;
-        smapPsoDesc.RasterizerState.SlopeScaledDepthBias = 0.1f;
+        smapPsoDesc.RasterizerState.SlopeScaledDepthBias = 1.0f;
         smapPsoDesc.pRootSignature = m_rootSignature.Get();
         smapPsoDesc.VS = { shadowVSBlob.data(), shadowVSBlob.size() };
         smapPsoDesc.HS = { shadowHSBlob.data(), shadowHSBlob.size() };
@@ -839,11 +829,11 @@ void Game::CreateDeviceDependentResources()
     m_worldMatrix = XMMatrixIdentity();
 
     // Initialize the view matrix
-    m_camPosition = XMVectorSet(0.0f, 0.0f, 500.0f, 0.0f);
+    m_camPosition = XMVectorSet(0.0f, 0.0f, 200.0f, 0.0f);
     m_camLookTarget = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
     m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, DEFAULT_UP_VECTOR);
     m_scrollWheelValue = 0;
-    m_lightDirection = XMVectorSet(1.0f, 1.0f, 0.0f, 1.0f);
+    m_lightDirection = XMVectorSet(1.0f, 0.0f, 0.0f, 1.0f);
 }
 
 // Allocate all memory resources that change on a window SizeChanged event.

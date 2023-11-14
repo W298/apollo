@@ -10,14 +10,6 @@ struct ConstantBufferType
     float4x4 viewMatrix;
     float4x4 projectionMatrix;
     float4 cameraPosition;
-    float4 lightDirection;
-    float4 lightColor;
-    float lightNearZ;
-    float lightFarZ;
-    float3 lightPosW;
-    float4x4 shadowTransform;
-    float4x4 invViewMatrix;
-    float4x4 invProjMatrix;
 };
 
 ConstantBuffer<ConstantBufferType> cb : register(b1);
@@ -135,10 +127,6 @@ HS_OUT HS(InputPatch<VS_OUTPUT, 4> input, int vertexIdx : SV_OutputControlPointI
 //--------------------------------------------------------------------------------------
 // Domain Shader
 //--------------------------------------------------------------------------------------
-
-static const float2 size = { 2.0, 0.0 };
-static const float3 off = { -1.0, 0.0, 1.0 };
-static const float2 nTex = { 11520, 11520 };
 
 [domain("quad")]
 DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, PatchTess patch)

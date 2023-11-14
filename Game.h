@@ -59,12 +59,8 @@ private:
         DirectX::XMFLOAT4 cameraPosition;
         DirectX::XMFLOAT4 lightDirection;
         DirectX::XMFLOAT4 lightColor;
-        float lightNearZ;
-        float lightFarZ;
-        DirectX::XMFLOAT3 lightPosW;
         DirectX::XMMATRIX shadowTransform;
-        DirectX::XMMATRIX invViewMatrix;
-        DirectX::XMMATRIX invProjMatrix;
+        float             shadowBias;
     };
 
     union PaddedConstantBuffer
@@ -173,6 +169,8 @@ private:
     DirectX::XMFLOAT4X4                             mLightView = IDENTITY_MATRIX;
     DirectX::XMFLOAT4X4                             mLightProj = IDENTITY_MATRIX;
     DirectX::XMFLOAT4X4                             mShadowTransform = IDENTITY_MATRIX;
+
+    float										    m_shadowBias = -0.03f;
 
     // If using the DirectX Tool Kit for DX12, uncomment this line:
     // std::unique_ptr<DirectX::GraphicsMemory>     m_graphicsMemory;
