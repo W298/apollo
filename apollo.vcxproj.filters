@@ -97,5 +97,6 @@
     <None Include="Shaders\Shadow.hlsli">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="packages.config" />
   </ItemGroup>
 </Project>

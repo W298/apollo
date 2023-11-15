@@ -4,11 +4,10 @@
 //--------------------------------------------------------------------------------------
 // Constant Buffer Variables
 //--------------------------------------------------------------------------------------
-struct ConstantBufferType
+struct OpaqueCBType
 {
     float4x4 worldMatrix;
-    float4x4 viewMatrix;
-    float4x4 projectionMatrix;
+    float4x4 viewProjMatrix;
     float4 cameraPosition;
     float4 lightDirection;
     float4 lightColor;
@@ -16,7 +15,7 @@ struct ConstantBufferType
     float shadowBias;
 };
 
-ConstantBuffer<ConstantBufferType> cb : register(b0);
+ConstantBuffer<OpaqueCBType> cb : register(b0);
 
 
 //--------------------------------------------------------------------------------------
@@ -59,7 +58,7 @@ struct DS_OUT
 // Texture & Sampler Variables
 //--------------------------------------------------------------------------------------
 Texture2D texMap[5] : register(t0);
-SamplerState samLinear : register(s0);
+SamplerState samAnisotropic : register(s0);
 SamplerComparisonState samShadow : register(s1);
 
 //--------------------------------------------------------------------------------------
@@ -176,13 +175,12 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
     float2 sTexCoord = float2(texIndex == 0 ? gTexCoord.x * 2 : (gTexCoord.x - 0.5f) * 2.0f, gTexCoord.y);
 
     // Get height from texture.
-    float height = texMap[texIndex].SampleLevel(samLinear, sTexCoord, level).r;
+    float height = texMap[texIndex].SampleLevel(samAnisotropic, sTexCoord, level).r;
     float3 catPos = normCatPos * (150.0f + height * 0.5f);
 
     // Multiply MVP matrices.
     output.position = mul(float4(catPos, 1.0f), cb.worldMatrix);
-    output.position = mul(output.position, cb.viewMatrix);
-    output.position = mul(output.position, cb.projectionMatrix);
+    output.position = mul(output.position, cb.viewProjMatrix);
 
     // Set cartesian position for calc texture coordinates in pixel shader.
     output.catPos = catPos;
@@ -202,10 +200,10 @@ float3 GetNormalFromHeight(Texture2D tex, float2 sTexCoord, float multiplier)
     float2 offyx = { off.y / nTex.x, off.x / nTex.y };
     float2 offyz = { off.y / nTex.x, off.z / nTex.y };
 
-    float a = tex.Sample(samLinear, sTexCoord + offxy * multiplier).r;
-    float b = tex.Sample(samLinear, sTexCoord + offzy * multiplier).r;
-    float c = tex.Sample(samLinear, sTexCoord + offyx * multiplier).r;
-    float d = tex.Sample(samLinear, sTexCoord + offyz * multiplier).r;
+    float a = tex.Sample(samAnisotropic, sTexCoord + offxy * multiplier).r;
+    float b = tex.Sample(samAnisotropic, sTexCoord + offzy * multiplier).r;
+    float c = tex.Sample(samAnisotropic, sTexCoord + offyx * multiplier).r;
+    float d = tex.Sample(samAnisotropic, sTexCoord + offyz * multiplier).r;
 
     float3 va = normalize(float3(size.xy, (b - a) * 0.5f));
     float3 vb = normalize(float3(size.yx, (d - c) * 0.5f));
@@ -220,9 +218,6 @@ float CalcShadowFactor(float4 shadowPosH)
 
     // Depth in NDC space.
     float depth = shadowPosH.z - cb.shadowBias;
-
-    if (distance(shadowPosH.xy, float2(0.5f, 0.5f)) <= 0.2f)
-        return 0;
 
     uint width, height, numMips;
     texMap[4].GetDimensions(0, width, height, numMips);
@@ -255,7 +250,6 @@ float hash(float n)
 float noise(float3 x)
 {
     // The noise function returns a value in the range -1.0f -> 1.0f
-
     float3 p = floor(x);
     float3 f = frac(x);
 
@@ -263,9 +257,9 @@ float noise(float3 x)
     float n = p.x + p.y * 57.0 + 113.0 * p.z;
 
     return lerp(lerp(lerp(hash(n + 0.0), hash(n + 1.0), f.x),
-                   lerp(hash(n + 57.0), hash(n + 58.0), f.x), f.y),
-               lerp(lerp(hash(n + 113.0), hash(n + 114.0), f.x),
-                   lerp(hash(n + 170.0), hash(n + 171.0), f.x), f.y), f.z);
+				lerp(hash(n + 57.0), hash(n + 58.0), f.x), f.y),
+				lerp(lerp(hash(n + 113.0), hash(n + 114.0), f.x),
+				lerp(hash(n + 170.0), hash(n + 171.0), f.x), f.y), f.z);
 }
 
 PS_OUTPUT PS(DS_OUT input)
@@ -303,16 +297,17 @@ PS_OUTPUT PS(DS_OUT input)
     float3x3 TBN = float3x3(normalize(T), normalize(B), normalize(N));
     float3 normal = normalize(mul(localNormal, TBN));
 
-    // [Diffuse color]
-    float4 texColor = texMap[texIndex].Sample(samLinear, sTexCoord);
-    float3 diffuse = max(dot(normal, cb.lightDirection.xyz), 0.0f) * cb.lightColor.xyz;
+    // Merge Results.
+    float4 texColor = texMap[texIndex].Sample(samAnisotropic, sTexCoord);
+    float3 diffuse = saturate(dot(normal, -cb.lightDirection.xyz)) * cb.lightColor.xyz;
     float3 ambient = float3(0.008f, 0.008f, 0.008f) * cb.lightColor.xyz;
 
     float shadowFactor = CalcShadowFactor(mul(float4(input.catPos, 1.0f), cb.shadowTransform));
+    float shadowCorrector = lerp(0.8f, 1.0f, max(dot(normCatPos, -cb.lightDirection.xyz), 0.0f));
 
-    float4 final = float4(saturate((diffuse * saturate(1 - shadowFactor + 0.2f) + ambient) * texColor.rgb), texColor.a);
+    float4 final = float4(saturate((diffuse * saturate(shadowFactor + shadowCorrector) + ambient) * texColor.rgb), texColor.a);
 	final.a = 1;
     output.color = final;
-    
+
     return output;
 }

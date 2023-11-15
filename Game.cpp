@@ -7,7 +7,7 @@
 
 #include <array>
 
-#include "CommonStates.h"
+#include "BufferHelpers.h"
 #include "DDSTextureLoader.h"
 #include "DirectXHelpers.h"
 #include "GeometryGenerator.h"
@@ -17,7 +17,6 @@
 extern void ExitGame() noexcept;
 
 using namespace DirectX;
-
 using Microsoft::WRL::ComPtr;
 
 Game::Game() noexcept(false)
@@ -86,88 +85,77 @@ void Game::Update(DX::StepTimer const& timer)
 {
     PIXBeginEvent(PIX_COLOR_DEFAULT, L"Update");
 
-    float elapsedTime = float(timer.GetElapsedSeconds());
+    const auto elapsedTime = static_cast<float>(timer.GetElapsedSeconds());
 
-    // TODO: Add your game logic here.
-
-    const auto keyboard = m_keyboard->GetState();
-    if (keyboard.Escape)
+    // Handle Input
     {
-        ExitGame();
-    }
-    const auto mouse = m_mouse->GetState();
-
-    if (keyboard.O)
-    {
-        m_orbitMode = true;
-	}
-	else if (keyboard.F)
-	{
-		m_orbitMode = false;
-	}
-
-    m_lightDirection = XMVector3TransformCoord(m_lightDirection, XMMatrixRotationY(elapsedTime / 12.0f));
-
-    if (m_orbitMode)
-    {
-        if (mouse.leftButton)
+        const auto keyboard = m_keyboard->GetState();
+        if (keyboard.Escape)
         {
-            m_camPosition = XMVector3TransformCoord(m_camPosition, XMMatrixRotationY(mouse.x * elapsedTime / 10.0f));
-            m_camPosition = XMVector3TransformCoord(m_camPosition, XMMatrixRotationX(-mouse.y * elapsedTime / 10.0f));
+            ExitGame();
         }
+        const auto mouse = m_mouse->GetState();
 
-        m_camPosition = m_camPosition - XMVector3Normalize(m_camPosition) * (mouse.scrollWheelValue - m_scrollWheelValue) * elapsedTime * 10.0f;
-        m_scrollWheelValue = mouse.scrollWheelValue;
+        m_orbitMode = keyboard.O ? true : keyboard.F ? false : m_orbitMode;
 
-        m_viewMatrix = XMMatrixLookAtLH(m_camPosition, XMVectorSet(0, 0, 0, 1), DEFAULT_UP_VECTOR);
+        if (m_orbitMode)
+        {
+            // Orbit mode
+            if (mouse.leftButton)
+            {
+                m_camPosition = XMVector3TransformCoord(m_camPosition, XMMatrixRotationY(mouse.x * elapsedTime / 10.0f));
+                m_camPosition = XMVector3TransformCoord(m_camPosition, XMMatrixRotationX(-mouse.y * elapsedTime / 10.0f));
+            }
+
+            m_camPosition = m_camPosition - XMVector3Normalize(m_camPosition) * (mouse.scrollWheelValue - m_scrollWheelValue) * elapsedTime * 10.0f;
+            m_scrollWheelValue = static_cast<float>(mouse.scrollWheelValue);
+
+            m_viewMatrix = XMMatrixLookAtLH(m_camPosition, XMVectorSet(0, 0, 0, 1), DEFAULT_UP_VECTOR);
+        }
+        else
+        {
+            // Flight mode
+            const float verticalMove = (keyboard.W ? 1.0f : keyboard.S ? -1.0f : 0.0f) * elapsedTime * m_camMoveSpeed;
+            const float horizontalMove = (keyboard.A ? -1.0f : keyboard.D ? 1.0f : 0.0f) * elapsedTime * m_camMoveSpeed;
+
+            // Handle mouse input.
+            m_camYaw += mouse.x * elapsedTime / 10.0f;
+            m_camPitch += mouse.y * elapsedTime / 10.0f;
+
+            // Set view matrix based on camera position and orientation.
+            m_camRotationMatrix = XMMatrixRotationRollPitchYaw(m_camPitch, m_camYaw, 0.0f);
+            m_camLookTarget = XMVector3TransformCoord(DEFAULT_FORWARD_VECTOR, m_camRotationMatrix);
+            m_camLookTarget = XMVector3Normalize(m_camLookTarget);
+
+            m_camRight = XMVector3TransformCoord(DEFAULT_RIGHT_VECTOR, m_camRotationMatrix);
+            m_camUp = XMVector3TransformCoord(DEFAULT_UP_VECTOR, m_camRotationMatrix);
+            m_camForward = XMVector3TransformCoord(DEFAULT_FORWARD_VECTOR, m_camRotationMatrix);
+
+            m_camPosition += horizontalMove * m_camRight;
+            m_camPosition += verticalMove * m_camForward;
+
+            m_camLookTarget = m_camPosition + m_camLookTarget;
+            m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, m_camUp);
+
+            // Manipulate shadow bias using scroll value.
+            m_shadowBias += (mouse.scrollWheelValue - m_scrollWheelValue) * elapsedTime / 1000.0f;
+            m_scrollWheelValue = static_cast<float>(mouse.scrollWheelValue);
+            OutputDebugStringW((std::to_wstring(m_shadowBias) + L"\n").c_str());
+        }
     }
-    else
-    {
-        const float moveSpeed = 60.0f;
-        const float verticalMove = (keyboard.W ? 1.0f : keyboard.S ? -1.0f : 0.0f) * elapsedTime * moveSpeed;
-        const float horizontalMove = (keyboard.A ? -1.0f : keyboard.D ? 1.0f : 0.0f) * elapsedTime * moveSpeed;
 
-        // Handle mouse input.
-        m_camYaw += mouse.x * elapsedTime / 10.0f;
-        m_camPitch += mouse.y * elapsedTime / 10.0f;
-
-        // Set view matrix based on camera position and orientation.
-        m_camRotationMatrix = XMMatrixRotationRollPitchYaw(m_camPitch, m_camYaw, 0.0f);
-        m_camLookTarget = XMVector3TransformCoord(DEFAULT_FORWARD_VECTOR, m_camRotationMatrix);
-        m_camLookTarget = XMVector3Normalize(m_camLookTarget);
-
-        m_camRight = XMVector3TransformCoord(DEFAULT_RIGHT_VECTOR, m_camRotationMatrix);
-        m_camUp = XMVector3TransformCoord(DEFAULT_UP_VECTOR, m_camRotationMatrix);
-        m_camForward = XMVector3TransformCoord(DEFAULT_FORWARD_VECTOR, m_camRotationMatrix);
-
-        m_camPosition += horizontalMove * m_camRight;
-        m_camPosition += verticalMove * m_camForward;
-
-        m_camLookTarget = m_camPosition + m_camLookTarget;
-
-        m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, m_camUp);
-
-        m_shadowBias += (mouse.scrollWheelValue - m_scrollWheelValue) * elapsedTime / 10.0f;
-        m_scrollWheelValue = mouse.scrollWheelValue;
-        OutputDebugStringW((std::to_wstring(m_shadowBias) + L"\n").c_str());
-    }
-
-
-
-
-
-
+    // Light rotation update
+    m_lightDirection = XMVector3TransformCoord(m_lightDirection, XMMatrixRotationY(elapsedTime / 12.0f));
 
     // Update Shadow Transform
     {
-        // Only the first "main" light casts a shadow.
         XMVECTOR lightDir = m_lightDirection;
         XMVECTOR lightPos = -2.0f * m_sceneBounds.Radius * lightDir;
         XMVECTOR targetPos = XMLoadFloat3(&m_sceneBounds.Center);
         XMVECTOR lightUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
         XMMATRIX lightView = XMMatrixLookAtLH(lightPos, targetPos, lightUp);
 
-        XMStoreFloat3(&mLightPosW, lightPos);
+        XMStoreFloat3(&m_lightPosition, lightPos);
 
         // Transform bounding sphere to light space.
         XMFLOAT3 sphereCenterLS;
@@ -181,8 +169,9 @@ void Game::Update(DX::StepTimer const& timer)
         float t = sphereCenterLS.y + m_sceneBounds.Radius;
         float f = sphereCenterLS.z + m_sceneBounds.Radius;
 
-        mLightNearZ = n;
-        mLightFarZ = f;
+        m_lightNearZ = n;
+        m_lightFarZ = f;
+
         XMMATRIX lightProj = XMMatrixOrthographicOffCenterLH(l, r, b, t, n, f);
 
         // Transform NDC space [-1,+1]^2 to texture space [0,1]^2
@@ -193,18 +182,10 @@ void Game::Update(DX::StepTimer const& timer)
             0.5f, 0.5f, 0.0f, 1.0f);
 
         XMMATRIX S = lightView * lightProj * T;
-        XMStoreFloat4x4(&mLightView, lightView);
-        XMStoreFloat4x4(&mLightProj, lightProj);
-        XMStoreFloat4x4(&mShadowTransform, S);
+        XMStoreFloat4x4(&m_lightView, lightView);
+        XMStoreFloat4x4(&m_lightProj, lightProj);
+        XMStoreFloat4x4(&m_shadowTransform, S);
     }
-
-
-
-
-
-
-
-
 
     PIXEndEvent();
 }
@@ -237,10 +218,8 @@ void Game::Render()
     m_deviceResources->Prepare();
     Clear();
 
-    auto commandList = m_deviceResources->GetCommandList();
+    const auto commandList = m_deviceResources->GetCommandList();
     PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
-
-    // TODO: Add your rendering code here.
 
     // Index into the available constant buffers based on the number
     // of draw calls. We've allocated enough for a known number of
@@ -255,55 +234,49 @@ void Game::Render()
     commandList->SetDescriptorHeaps(_countof(descHeaps), descHeaps);
     commandList->SetGraphicsRootDescriptorTable(0, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
 
+    //--------------------------------------------------------------------------------------
+	// PASS 1 - Shadow Map
+	//--------------------------------------------------------------------------------------
 
-
-
-
-
-    // Set the constant data.
-    ConstantBuffer cbData;
-
-    XMMATRIX view = XMLoadFloat4x4(&mLightView);
-    XMMATRIX proj = XMLoadFloat4x4(&mLightProj);
-
-    cbData.worldMatrix = XMMatrixTranspose(m_worldMatrix);
-    cbData.viewMatrix = XMMatrixTranspose(view);
-    cbData.projectionMatrix = XMMatrixTranspose(proj);
-
-    XMMATRIX shadowTransform = XMLoadFloat4x4(&mShadowTransform);
-    cbData.shadowTransform = XMMatrixTranspose(shadowTransform);
-
-    memcpy(&m_cbMappedDataShadow[cbIndex].constants, &cbData, sizeof(ConstantBuffer));
-
-    // Bind the constants to the shader.
-    auto baseGpuAddress = m_cbGpuAddressShadow + sizeof(PaddedConstantBuffer) * cbIndex;
-    commandList->SetGraphicsRootConstantBufferView(2, baseGpuAddress);
+    PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"PASS 1 Shadow Map");
 
     {
-        auto vp = m_shadowMap->Viewport();
-        auto sr = m_shadowMap->ScissorRect();
+        // Set the constant data for shadow map.
+        ShadowCB cbShadow;
 
-        commandList->RSSetViewports(1, &vp);
-        commandList->RSSetScissorRects(1, &sr);
+        XMMATRIX lightWorld = XMLoadFloat4x4(&IDENTITY_MATRIX);
+        XMMATRIX lightView = XMLoadFloat4x4(&m_lightView);
+        XMMATRIX lightProj = XMLoadFloat4x4(&m_lightProj);
 
-        CD3DX12_RESOURCE_BARRIER tr = CD3DX12_RESOURCE_BARRIER::Transition(m_shadowMap->Resource(),
-        D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+        cbShadow.lightWorldMatrix = XMMatrixTranspose(lightWorld);
+        cbShadow.lightViewProjMatrix = XMMatrixTranspose(lightView * lightProj);
+        cbShadow.cameraPosition = m_camPosition;
+
+        memcpy(&m_cbMappedDataShadow[cbIndex].constants, &cbShadow, sizeof(ShadowCB));
+
+        // Bind the constants to the shader.
+        const auto baseGpuAddress = m_cbGpuAddressShadow + sizeof(PaddedShadowCB) * cbIndex;
+        commandList->SetGraphicsRootConstantBufferView(2, baseGpuAddress);
+
+	    const auto viewport = m_shadowMap->Viewport();
+	    const auto scissorRect = m_shadowMap->ScissorRect();
+
+        commandList->RSSetViewports(1, &viewport);
+        commandList->RSSetScissorRects(1, &scissorRect);
+
         // Change to DEPTH_WRITE.
-        commandList->ResourceBarrier(1, &tr);
+        TransitionResource(commandList, m_shadowMap->Resource(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_DEPTH_WRITE);
 
         // Clear the back buffer and depth buffer.
-        commandList->ClearDepthStencilView(m_shadowMap->Dsv(),
-            D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+        commandList->ClearDepthStencilView(
+            m_shadowMap->Dsv(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
         // Set null render target because we are only going to draw to
-        // depth buffer.  Setting a null render target will disable color writes.
+        // depth buffer. Setting a null render target will disable color writes.
         // Note the active PSO also must specify a render target count of 0.
-        auto dsv = m_shadowMap->Dsv();
+	    const auto dsv = m_shadowMap->Dsv();
         commandList->OMSetRenderTargets(0, nullptr, false, &dsv);
-
         commandList->SetPipelineState(m_shadowPSO.Get());
-
-
 
         // Set necessary state.
         commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
@@ -313,54 +286,61 @@ void Game::Render()
         // Draw the sphere.
         commandList->DrawIndexedInstanced(m_indexCount, 1, 0, 0, 0);
 
-
-
         // Change back to GENERIC_READ so we can read the texture in a shader.
-        CD3DX12_RESOURCE_BARRIER tr2 = CD3DX12_RESOURCE_BARRIER::Transition(m_shadowMap->Resource(),
-            D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ);
-        commandList->ResourceBarrier(1, &tr2);
+        TransitionResource(commandList, m_shadowMap->Resource(), D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ);
     }
 
+    PIXEndEvent(commandList);
 
+    //--------------------------------------------------------------------------------------
+    // PASS 2 - Opaque
+    //--------------------------------------------------------------------------------------
 
+    PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"PASS 2 Opaque");
 
+    {
+        Clear();
 
+        commandList->SetPipelineState(m_pipelineState.Get());
 
+        OpaqueCB cbOpaque;
 
+        XMMATRIX shadowTransform = XMLoadFloat4x4(&m_shadowTransform);
+        cbOpaque.shadowTransform = XMMatrixTranspose(shadowTransform);
 
+        // Set the constant data for opaque pass.
+        cbOpaque.worldMatrix = XMMatrixTranspose(m_worldMatrix);
+        cbOpaque.viewProjMatrix = XMMatrixTranspose(m_viewMatrix * m_projectionMatrix);
 
-    Clear();
+        XMStoreFloat4(&cbOpaque.cameraPosition, m_camPosition);
+        XMStoreFloat4(&cbOpaque.lightDirection, m_lightDirection);
 
-    commandList->SetPipelineState(m_pipelineState.Get());
+        cbOpaque.lightColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+        cbOpaque.shadowBias = m_shadowBias;
 
-    cbData.worldMatrix = XMMatrixTranspose(m_worldMatrix);
-    cbData.viewMatrix = XMMatrixTranspose(m_viewMatrix);
-    cbData.projectionMatrix = XMMatrixTranspose(m_projectionMatrix);
-    XMStoreFloat4(&cbData.cameraPosition, m_camPosition);
-    XMStoreFloat4(&cbData.lightDirection, m_lightDirection);
-    cbData.lightColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-    cbData.shadowBias = m_shadowBias;
-    memcpy(&m_cbMappedData[cbIndex].constants, &cbData, sizeof(ConstantBuffer));
+        memcpy(&m_cbMappedData[cbIndex].constants, &cbOpaque, sizeof(OpaqueCB));
 
-    baseGpuAddress = m_cbGpuAddress + sizeof(PaddedConstantBuffer) * cbIndex;
-    commandList->SetGraphicsRootConstantBufferView(1, baseGpuAddress);
+        // Bind the constants to the shader.
+        const auto baseGpuAddress = m_cbGpuAddress + sizeof(PaddedOpaqueCB) * cbIndex;
+        commandList->SetGraphicsRootConstantBufferView(1, baseGpuAddress);
 
-    // Set necessary state.
-    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
-    commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
-    commandList->IASetIndexBuffer(&m_indexBufferView);
+        // Set necessary state.
+        commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
+        commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
+        commandList->IASetIndexBuffer(&m_indexBufferView);
 
-    // Draw the sphere.
-    commandList->DrawIndexedInstanced(m_indexCount, 1, 0, 0, 0);
+        // Draw the sphere.
+        commandList->DrawIndexedInstanced(m_indexCount, 1, 0, 0, 0);
+    }
+
+    PIXEndEvent(commandList);
 
     PIXEndEvent(commandList);
 
     // Show the new frame.
     PIXBeginEvent(m_deviceResources->GetCommandQueue(), PIX_COLOR_DEFAULT, L"Present");
-    m_deviceResources->Present();
 
-    // If using the DirectX Tool Kit for DX12, uncomment this line:
-    // m_graphicsMemory->Commit(m_deviceResources->GetCommandQueue());
+	m_deviceResources->Present();
 
     // GPU will signal an increasing value each frame
     m_deviceResources->GetCommandQueue()->Signal(m_fence.Get(), frameIdx);
@@ -463,56 +443,53 @@ void Game::CreateDeviceDependentResources()
         throw std::runtime_error("Shader Model 6.0 is not supported!");
     }
 
-    // If using the DirectX Tool Kit for DX12, uncomment this line:
-    // m_graphicsMemory = std::make_unique<GraphicsMemory>(device);
-
-    // TODO: Initialize device dependent objects here (independent of window size).
-
     // Initialize Shadow Map Instance
     m_shadowMap = std::make_unique<ShadowMap>(m_deviceResources->GetD3DDevice(), 8192, 8192);
 
-    // Initialize Bounds
+    // Initialize Bounds for Shadow Map
     m_sceneBounds.Center = XMFLOAT3(0.0f, 0.0f, 0.0f);
     m_sceneBounds.Radius = 160.0f;
 
+    // Initialize Descriptor Sizes
     m_cbvsrvDescSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     m_dsvDescSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 
 	// Create root signature with root CBV, descriptor table (with SRV) and sampler
     {
-        CD3DX12_DESCRIPTOR_RANGE texTable;
-        texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0);
+        CD3DX12_DESCRIPTOR_RANGE srvTable;
+        srvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0);
 
-        CD3DX12_ROOT_PARAMETER rootParameters[3];
-        rootParameters[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_ALL);     // register (t0)
+        CD3DX12_ROOT_PARAMETER rootParameters[3] = {};
+        rootParameters[0].InitAsDescriptorTable(1, &srvTable, D3D12_SHADER_VISIBILITY_ALL);     // register (t0)
         rootParameters[1].InitAsConstantBufferView(0);                                          // register (c0)
-        rootParameters[2].InitAsConstantBufferView(1);                                          // register (c0)
+        rootParameters[2].InitAsConstantBufferView(1);                                          // register (c1)
 
         const CD3DX12_STATIC_SAMPLER_DESC anisotropicWrap(
-			0, // shaderRegister
-			D3D12_FILTER_ANISOTROPIC, // filter
-			D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressU
-			D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressV
-			D3D12_TEXTURE_ADDRESS_MODE_WRAP,  // addressW
-			0.0f,                               // mipLODBias
-			16,                                 // maxAnisotropy
+			0,                                                  // shaderRegister
+			D3D12_FILTER_ANISOTROPIC,                           // filter
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP,                    // addressU
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP,                    // addressV
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP,                    // addressW
+			0.0f,                                               // mipLODBias
+			16,                                                 // maxAnisotropy
 			D3D12_COMPARISON_FUNC_LESS_EQUAL,
 			D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE,
-			0.0f,                               // minLOD
-			D3D12_FLOAT32_MAX,                  // maxLOD
+			0.0f,                                               // minLOD
+			D3D12_FLOAT32_MAX,                                  // maxLOD
 			D3D12_SHADER_VISIBILITY_ALL
 		);
 
         const CD3DX12_STATIC_SAMPLER_DESC shadow(
-            1, // shaderRegister
-            D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, // filter
-            D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressU
-            D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressV
-            D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressW
-            0.0f,                               // mipLODBias
-            16,                                 // maxAnisotropy
-            D3D12_COMPARISON_FUNC_LESS_EQUAL,
-            D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK);
+            1,                                                  // shaderRegister
+            D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT,   // filter
+            D3D12_TEXTURE_ADDRESS_MODE_BORDER,                  // addressU
+            D3D12_TEXTURE_ADDRESS_MODE_BORDER,                  // addressV
+            D3D12_TEXTURE_ADDRESS_MODE_BORDER,                  // addressW
+            0.0f,                                               // mipLODBias
+            16,                                                 // maxAnisotropy
+            D3D12_COMPARISON_FUNC_LESS,
+            D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK
+        );
 
         std::array<const CD3DX12_STATIC_SAMPLER_DESC, 2> staticSamplers = { anisotropicWrap, shadow };
 
@@ -520,7 +497,11 @@ void Game::CreateDeviceDependentResources()
             D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
         CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
-        rootSignatureDesc.Init(_countof(rootParameters), rootParameters, (UINT)staticSamplers.size(), staticSamplers.data(), rootSignatureFlags);
+        rootSignatureDesc.Init(
+            _countof(rootParameters), rootParameters, 
+            (UINT)staticSamplers.size(), staticSamplers.data(), 
+            rootSignatureFlags
+        );
 
         ComPtr<ID3DBlob> signature;
         ComPtr<ID3DBlob> error;
@@ -626,16 +607,17 @@ void Game::CreateDeviceDependentResources()
         srvDesc.Texture2D.MipLevels = m_heightRTexResource->GetDesc().MipLevels;
         device->CreateShaderResourceView(m_heightRTexResource.Get(), &srvDesc, descHandle);
 
+        // shadow map
         m_shadowMap->BuildDescriptors(
             CD3DX12_CPU_DESCRIPTOR_HANDLE(m_srvHeap->GetCPUDescriptorHandleForHeapStart(), 4, m_cbvsrvDescSize),
             CD3DX12_GPU_DESCRIPTOR_HANDLE(m_srvHeap->GetGPUDescriptorHandleForHeapStart(), 4, m_cbvsrvDescSize),
             CD3DX12_CPU_DESCRIPTOR_HANDLE(m_deviceResources->GetDepthStencilView(), 1, m_dsvDescSize));
     }
 
+    // Create the opaque constant buffer memory
     {
-        // Create the constant buffer memory
         CD3DX12_HEAP_PROPERTIES uploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
-        size_t const cbSize = c_numDrawCalls * m_deviceResources->GetBackBufferCount() * sizeof(PaddedConstantBuffer);
+        size_t const cbSize = c_numDrawCalls * m_deviceResources->GetBackBufferCount() * sizeof(PaddedOpaqueCB);
 
         CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(cbSize);
         DX::ThrowIfFailed(
@@ -652,10 +634,10 @@ void Game::CreateDeviceDependentResources()
         m_cbGpuAddress = m_cbUploadHeap->GetGPUVirtualAddress();
     }
 
+    // Create the shadow constant buffer memory
     {
-        // Create the constant buffer memory 2
         CD3DX12_HEAP_PROPERTIES uploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
-        size_t const cbSize = c_numDrawCalls * m_deviceResources->GetBackBufferCount() * sizeof(PaddedConstantBuffer);
+        size_t const cbSize = c_numDrawCalls * m_deviceResources->GetBackBufferCount() * sizeof(PaddedShadowCB);
 
         CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(cbSize);
         DX::ThrowIfFailed(
@@ -674,30 +656,27 @@ void Game::CreateDeviceDependentResources()
 
     // Create the pipeline state, which includes loading shaders.
     {
+        static constexpr D3D12_INPUT_ELEMENT_DESC s_inputElementDesc[] =
+        {
+            { "POSITION",   0,  DXGI_FORMAT_R32G32B32_FLOAT,    0,  0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+        };
+
+        // Load shaders
         auto vertexShaderBlob = DX::ReadData(L"VertexShader.cso");
         auto hullShaderBlob = DX::ReadData(L"HullShader.cso");
         auto domainShaderBlob = DX::ReadData(L"DomainShader.cso");
         auto pixelShaderBlob = DX::ReadData(L"PixelShader.cso");
 
-        static const D3D12_INPUT_ELEMENT_DESC s_inputElementDesc[] =
-        {
-            { "POSITION",   0,  DXGI_FORMAT_R32G32B32_FLOAT,    0,  0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
-        };
-
-        // Describe and create the graphics pipeline state object (PSO).
+        // Create Opaque PSO
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-
-        CD3DX12_RASTERIZER_DESC rasterizerDesc = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-        rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
-        rasterizerDesc.CullMode = D3D12_CULL_MODE_BACK;
-
         psoDesc.InputLayout = { s_inputElementDesc, _countof(s_inputElementDesc) };
         psoDesc.pRootSignature = m_rootSignature.Get();
         psoDesc.VS = { vertexShaderBlob.data(), vertexShaderBlob.size() };
         psoDesc.HS = { hullShaderBlob.data(), hullShaderBlob.size() };
         psoDesc.DS = { domainShaderBlob.data(), domainShaderBlob.size() };
         psoDesc.PS = { pixelShaderBlob.data(), pixelShaderBlob.size() };
-        psoDesc.RasterizerState = rasterizerDesc;
+        psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+        psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
         psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
     	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
     	psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
@@ -711,29 +690,28 @@ void Game::CreateDeviceDependentResources()
                 &psoDesc,
                 IID_PPV_ARGS(m_pipelineState.ReleaseAndGetAddressOf())));
 
-
-        // Create Shadow Map PSO
+        // Load shadow shaders
         auto shadowVSBlob = DX::ReadData(L"ShadowVS.cso");
         auto shadowHSBlob = DX::ReadData(L"ShadowHS.cso");
         auto shadowDSBlob = DX::ReadData(L"ShadowDS.cso");
         auto shadowPSBlob = DX::ReadData(L"ShadowPS.cso");
 
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC smapPsoDesc = D3D12_GRAPHICS_PIPELINE_STATE_DESC(psoDesc);
-        smapPsoDesc.RasterizerState.DepthBias = 100000;
-        smapPsoDesc.RasterizerState.DepthBiasClamp = 0.0f;
-        smapPsoDesc.RasterizerState.SlopeScaledDepthBias = 1.0f;
-        smapPsoDesc.pRootSignature = m_rootSignature.Get();
-        smapPsoDesc.VS = { shadowVSBlob.data(), shadowVSBlob.size() };
-        smapPsoDesc.HS = { shadowHSBlob.data(), shadowHSBlob.size() };
-        smapPsoDesc.DS = { shadowDSBlob.data(), shadowDSBlob.size() };
-        smapPsoDesc.PS = { shadowPSBlob.data(), shadowPSBlob.size() };
-
-        // Shadow map pass does not have a render target.
-        smapPsoDesc.RTVFormats[0] = DXGI_FORMAT_UNKNOWN;
-        smapPsoDesc.NumRenderTargets = 0;
+        // Create Shadow Map PSO
+        auto shadowPSODesc = D3D12_GRAPHICS_PIPELINE_STATE_DESC(psoDesc);
+        shadowPSODesc.VS = { shadowVSBlob.data(), shadowVSBlob.size() };
+        shadowPSODesc.HS = { shadowHSBlob.data(), shadowHSBlob.size() };
+        shadowPSODesc.DS = { shadowDSBlob.data(), shadowDSBlob.size() };
+        shadowPSODesc.PS = { shadowPSBlob.data(), shadowPSBlob.size() };
+        shadowPSODesc.RasterizerState.DepthBias = 100000;
+        shadowPSODesc.RasterizerState.DepthBiasClamp = 0.0f;
+        shadowPSODesc.RasterizerState.SlopeScaledDepthBias = 1.0f;
+        shadowPSODesc.pRootSignature = m_rootSignature.Get();
+        shadowPSODesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+        shadowPSODesc.RTVFormats[0] = DXGI_FORMAT_UNKNOWN;
+        shadowPSODesc.NumRenderTargets = 0;
         DX::ThrowIfFailed(
             device->CreateGraphicsPipelineState(
-                &smapPsoDesc,
+                &shadowPSODesc,
                 IID_PPV_ARGS(m_shadowPSO.ReleaseAndGetAddressOf())));
     }
 
@@ -746,35 +724,23 @@ void Game::CreateDeviceDependentResources()
         vertexData.push_back(VertexPosition(v.Position));
 	}
 
-    std::vector<uint32_t> indexData = std::vector<uint32_t>(data.Indices32);
+    const auto indexData = std::vector<uint32_t>(data.Indices32);
 
-    const int vertexBufferSize = sizeof(VertexPosition) * vertexData.size();
-    const int indexBufferSize = sizeof(uint32_t) * indexData.size();
-    m_indexCount = indexData.size();
+    const UINT vertexBufferSize = static_cast<UINT>(sizeof(VertexPosition) * vertexData.size());
+    const UINT indexBufferSize = static_cast <UINT>(sizeof(uint32_t) * indexData.size());
+    m_indexCount = static_cast<unsigned int>(indexData.size());
 
-    // Create vertex buffer.
+    // Create vertex buffer
     {
-        // Note: using upload heaps to transfer static data like vert buffers is not 
-        // recommended. Every time the GPU needs it, the upload heap will be marshalled 
-        // over. Please read up on Default Heap usage. An upload heap is used here for 
-        // code simplicity and because there are very few verts to actually transfer.
-        const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
-        const CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize);
+        ResourceUploadBatch resourceUpload(device);
+        resourceUpload.Begin();
 
         DX::ThrowIfFailed(
-            device->CreateCommittedResource(&heapProps,
-                D3D12_HEAP_FLAG_NONE,
-                &resDesc,
-                D3D12_RESOURCE_STATE_GENERIC_READ,
-                nullptr,
-                IID_PPV_ARGS(m_vertexBuffer.ReleaseAndGetAddressOf())));
+            CreateStaticBuffer(device, resourceUpload, vertexData, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, &m_vertexBuffer)
+        );
 
-        // Copy the triangle data to the vertex buffer.
-        UINT8* pVertexDataBegin;
-        CD3DX12_RANGE readRange(0, 0);		// We do not intend to read from this resource on the CPU.
-        DX::ThrowIfFailed(m_vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin)));
-        memcpy(pVertexDataBegin, vertexData.data(), vertexBufferSize);
-        m_vertexBuffer->Unmap(0, nullptr);
+        auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
+        uploadResourcesFinished.wait();
 
         // Initialize the vertex buffer view.
         m_vertexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
@@ -782,25 +748,17 @@ void Game::CreateDeviceDependentResources()
         m_vertexBufferView.SizeInBytes = vertexBufferSize;
     }
 
-    // Create index buffer.
+    // Create index buffer
     {
-        const D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-        const CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize);
+        ResourceUploadBatch resourceUpload(device);
+        resourceUpload.Begin();
 
-    	DX::ThrowIfFailed(
-            device->CreateCommittedResource(&heapProps,
-                D3D12_HEAP_FLAG_NONE,
-                &resDesc,
-                D3D12_RESOURCE_STATE_GENERIC_READ,
-                nullptr,
-                IID_PPV_ARGS(m_indexBuffer.ReleaseAndGetAddressOf())));
+        DX::ThrowIfFailed(
+            CreateStaticBuffer(device, resourceUpload, indexData, D3D12_RESOURCE_STATE_INDEX_BUFFER, &m_indexBuffer)
+        );
 
-        // Copy the data to the index buffer.
-        UINT8* pVertexDataBegin;
-        CD3DX12_RANGE readRange(0, 0);		// We do not intend to read from this resource on the CPU.
-        DX::ThrowIfFailed(m_indexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin)));
-        memcpy(pVertexDataBegin, indexData.data(), indexBufferSize);
-        m_indexBuffer->Unmap(0, nullptr);
+        auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
+        uploadResourcesFinished.wait();
 
         // Initialize the index buffer view.
         m_indexBufferView.BufferLocation = m_indexBuffer->GetGPUVirtualAddress();
@@ -818,29 +776,25 @@ void Game::CreateDeviceDependentResources()
             D3D12_FENCE_FLAG_NONE, 
             IID_PPV_ARGS(m_fence.ReleaseAndGetAddressOf())));
 
-    // Initialize camera values
+    // Initialize values
     m_camUp = DEFAULT_UP_VECTOR;
     m_camForward = DEFAULT_FORWARD_VECTOR;
     m_camRight = DEFAULT_RIGHT_VECTOR;
     m_camYaw = -3.0f;
     m_camPitch = 0.37f;
-
-    // Initialize the world matrix
-    m_worldMatrix = XMMatrixIdentity();
-
-    // Initialize the view matrix
     m_camPosition = XMVectorSet(0.0f, 0.0f, 200.0f, 0.0f);
     m_camLookTarget = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+
+    m_worldMatrix = XMMatrixIdentity();
     m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, DEFAULT_UP_VECTOR);
-    m_scrollWheelValue = 0;
-    m_lightDirection = XMVectorSet(1.0f, 0.0f, 0.0f, 1.0f);
+
+	m_scrollWheelValue = 0;
+    m_lightDirection = XMVectorSet(-1.0f, 0.0f, 0.0f, 1.0f);
 }
 
 // Allocate all memory resources that change on a window SizeChanged event.
 void Game::CreateWindowSizeDependentResources()
 {
-    // TODO: Initialize windows-size dependent objects here.
-
     // Initialize the projection matrix
     auto size = m_deviceResources->GetOutputSize();
     m_projectionMatrix = XMMatrixPerspectiveFovLH(
@@ -854,21 +808,26 @@ void Game::CreateWindowSizeDependentResources()
 
 void Game::OnDeviceLost()
 {
-    // TODO: Add Direct3D resource cleanup here.
-
     m_rootSignature.Reset();
     m_pipelineState.Reset();
+    m_shadowPSO.Reset();
+
 	m_vertexBuffer.Reset();
     m_indexBuffer.Reset();
 
     m_cbUploadHeap.Reset();
     m_cbMappedData = nullptr;
+    m_cbUploadHeapShadow.Reset();
+    m_cbMappedDataShadow = nullptr;
 
     m_colorLTexResource.Reset();
     m_colorRTexResource.Reset();
     m_heightLTexResource.Reset();
     m_heightRTexResource.Reset();
+
     m_srvHeap.Reset();
+
+    m_shadowMap.reset();
 
     m_fence.Reset();
 }

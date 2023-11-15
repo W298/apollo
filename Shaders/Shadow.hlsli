@@ -4,15 +4,14 @@
 //--------------------------------------------------------------------------------------
 // Constant Buffer Variables
 //--------------------------------------------------------------------------------------
-struct ConstantBufferType
+struct ShadowCBType
 {
     float4x4 worldMatrix;
-    float4x4 viewMatrix;
-    float4x4 projectionMatrix;
+    float4x4 viewProjMatrix;
     float4 cameraPosition;
 };
 
-ConstantBuffer<ConstantBufferType> cb : register(b1);
+ConstantBuffer<ShadowCBType> cb : register(b1);
 
 
 //--------------------------------------------------------------------------------------
@@ -165,13 +164,12 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
 
     // Multiply MVP matrices.
     output.position = mul(float4(normCatPos * (150.0f + height * 0.5f), 1.0f), cb.worldMatrix);
-    output.position = mul(output.position, cb.viewMatrix);
-    output.position = mul(output.position, cb.projectionMatrix);
+    output.position = mul(output.position, cb.viewProjMatrix);
 
     return output;
 }
 
 void PS(DS_OUT input)
 {
-    
+    // Nothing to do.
 }

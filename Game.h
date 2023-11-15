@@ -13,8 +13,6 @@
 #include "StepTimer.h"
 #include "VertexTypes.h"
 
-// A basic game implementation that creates a D3D12 device and
-// provides a game loop.
 class Game final : public DX::IDeviceNotify
 {
 public:
@@ -51,11 +49,10 @@ public:
     void GetDefaultSize(int& width, int& height) const noexcept;
 
 private:
-    struct ConstantBuffer
+    struct OpaqueCB
     {
         DirectX::XMMATRIX worldMatrix;
-        DirectX::XMMATRIX viewMatrix;
-        DirectX::XMMATRIX projectionMatrix;
+        DirectX::XMMATRIX viewProjMatrix;
         DirectX::XMFLOAT4 cameraPosition;
         DirectX::XMFLOAT4 lightDirection;
         DirectX::XMFLOAT4 lightColor;
@@ -63,15 +60,30 @@ private:
         float             shadowBias;
     };
 
-    union PaddedConstantBuffer
+    union PaddedOpaqueCB
     {
-        ConstantBuffer constants;
+        OpaqueCB constants;
         uint8_t bytes[2 * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT];
     };
 
-    // Check the exact size of the PaddedConstantBuffer to make sure it will align properly
-    static_assert(sizeof(PaddedConstantBuffer) == 
-        2 * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT, "PaddedConstantBuffer is not aligned properly");
+    struct ShadowCB
+    {
+        DirectX::XMMATRIX lightWorldMatrix;
+        DirectX::XMMATRIX lightViewProjMatrix;
+        DirectX::XMVECTOR cameraPosition;
+    };
+
+    union PaddedShadowCB
+    {
+    	ShadowCB constants;
+		uint8_t bytes[2 * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT];
+	};
+
+    // Check the exact size to make sure it will align properly
+    static_assert(sizeof(PaddedOpaqueCB) == 
+        2 * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT, "PaddedOpaqueCB is not aligned properly");
+    static_assert(sizeof(PaddedShadowCB) ==
+        2 * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT, "PaddedShadowCB is not aligned properly");
 
     void Update(DX::StepTimer const& timer);
     void Render();
@@ -81,14 +93,14 @@ private:
     void CreateDeviceDependentResources();
     void CreateWindowSizeDependentResources();
 
-    const DirectX::XMVECTORF32 DEFAULT_UP_VECTOR = { 0.f, 1.f, 0.f, 0.f };
-    const DirectX::XMVECTORF32 DEFAULT_FORWARD_VECTOR = { 0.f, 0.f, 1.f, 0.f };
-    const DirectX::XMVECTORF32 DEFAULT_RIGHT_VECTOR = { 1.f, 0.f, 0.f, 0.f };
-
-    const DirectX::XMFLOAT4X4 IDENTITY_MATRIX = { 1.f, 0.f, 0.f, 0.f,
-    												  0.f, 1.f, 0.f, 0.f,
-    												  0.f, 0.f, 1.f, 0.f,
-    												  0.f, 0.f, 0.f, 1.f };
+    // Constants
+    const DirectX::XMVECTORF32                      DEFAULT_UP_VECTOR = { 0.f, 1.f, 0.f, 0.f };
+    const DirectX::XMVECTORF32                      DEFAULT_FORWARD_VECTOR = { 0.f, 0.f, 1.f, 0.f };
+    const DirectX::XMVECTORF32                      DEFAULT_RIGHT_VECTOR = { 1.f, 0.f, 0.f, 0.f };
+    const DirectX::XMFLOAT4X4                       IDENTITY_MATRIX = { 1.f, 0.f, 0.f, 0.f,
+    																	0.f, 1.f, 0.f, 0.f,
+    																	0.f, 0.f, 1.f, 0.f,
+    																	0.f, 0.f, 0.f, 1.f };
 
     // Device resources.
     std::unique_ptr<DX::DeviceResources>            m_deviceResources;
@@ -100,39 +112,49 @@ private:
     std::unique_ptr<DirectX::Keyboard>              m_keyboard;
     std::unique_ptr<DirectX::Mouse>                 m_mouse;
 
-    // PSOs
+    // Number of draw calls
+    static const unsigned int                       c_numDrawCalls = 2;
+
+    // Root Signature and PSO
+    Microsoft::WRL::ComPtr<ID3D12RootSignature>     m_rootSignature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_pipelineState;
     Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_shadowPSO;
 
-    // Direct3D 12 objects
-    Microsoft::WRL::ComPtr<ID3D12RootSignature>     m_rootSignature;
+    // VB and IB
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_vertexBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_indexBuffer;
     D3D12_VERTEX_BUFFER_VIEW                        m_vertexBufferView;
     D3D12_INDEX_BUFFER_VIEW                         m_indexBufferView;
     unsigned int                                    m_indexCount;
 
-    // Constant buffer objects
+    // CB
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_cbUploadHeap;
-    PaddedConstantBuffer*                           m_cbMappedData;
-    D3D12_GPU_VIRTUAL_ADDRESS                       m_cbGpuAddress = 0;
+    PaddedOpaqueCB*                                 m_cbMappedData;
+    D3D12_GPU_VIRTUAL_ADDRESS                       m_cbGpuAddress;
+	Microsoft::WRL::ComPtr<ID3D12Resource>          m_cbUploadHeapShadow;
+    PaddedShadowCB*                                 m_cbMappedDataShadow;
+    D3D12_GPU_VIRTUAL_ADDRESS                       m_cbGpuAddressShadow;
 
-    Microsoft::WRL::ComPtr<ID3D12Resource>          m_cbUploadHeapShadow;
-    PaddedConstantBuffer*                           m_cbMappedDataShadow;
-    D3D12_GPU_VIRTUAL_ADDRESS                       m_cbGpuAddressShadow = 0;
-
-    // Texture objects
+    // Texture Resources
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_colorLTexResource;
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_colorRTexResource;
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_heightLTexResource;
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_heightRTexResource;
-    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>    m_srvHeap;
 
-    UINT											m_cbvsrvDescSize = 0;
-    UINT											m_dsvDescSize = 0;
+    // SRV Descriptor Heap
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>    m_srvHeap;
 
-    // Number of draw calls
-    static const unsigned int                       c_numDrawCalls = 2;
+    // Descriptor Sizes
+    UINT											m_cbvsrvDescSize;
+    UINT											m_dsvDescSize;
+
+    // Camera
+    float                                           m_camMoveSpeed = 60.0f;
+
+    // Shadow
+    std::unique_ptr<ShadowMap>  			        m_shadowMap;
+    DirectX::BoundingSphere                         m_sceneBounds;
+    float										    m_shadowBias = 0.003f;
 
     // A synchronization fence and an event. These members will be used
     // to synchronize the CPU with the GPU so that there will be no
@@ -140,13 +162,15 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Fence>             m_fence;
     Microsoft::WRL::Wrappers::Event                 m_fenceEvent;
 
-    // These computed values will be loaded into a ConstantBuffer
-    // during Render
+    //--------------------------------------------------------------------------------------
+	// Constant data
+	//--------------------------------------------------------------------------------------
+    // WVP matrices
     DirectX::XMMATRIX                               m_worldMatrix;
     DirectX::XMMATRIX                               m_viewMatrix;
     DirectX::XMMATRIX                               m_projectionMatrix;
 
-    // Camera state
+    // Camera states
     DirectX::XMVECTOR                               m_camPosition;
     DirectX::XMVECTOR                               m_camLookTarget;
     DirectX::XMMATRIX							    m_camRotationMatrix;
@@ -158,20 +182,14 @@ private:
     float										    m_scrollWheelValue;
     bool                                            m_orbitMode = false;
 
-    DirectX::XMVECTOR							    m_lightDirection;
+    // Light states
+    DirectX::XMVECTOR                               m_lightDirection;
 
-    std::unique_ptr<ShadowMap>  			        m_shadowMap;
-    DirectX::BoundingSphere                         m_sceneBounds;
-
-    float                                           mLightNearZ = 0.0f;
-    float                                           mLightFarZ = 0.0f;
-    DirectX::XMFLOAT3                               mLightPosW;
-    DirectX::XMFLOAT4X4                             mLightView = IDENTITY_MATRIX;
-    DirectX::XMFLOAT4X4                             mLightProj = IDENTITY_MATRIX;
-    DirectX::XMFLOAT4X4                             mShadowTransform = IDENTITY_MATRIX;
-
-    float										    m_shadowBias = -0.03f;
-
-    // If using the DirectX Tool Kit for DX12, uncomment this line:
-    // std::unique_ptr<DirectX::GraphicsMemory>     m_graphicsMemory;
+    // Shadow Map states
+    DirectX::XMFLOAT4X4                             m_shadowTransform = IDENTITY_MATRIX;
+    float                                           m_lightNearZ = 0.0f;
+    float                                           m_lightFarZ = 0.0f;
+    DirectX::XMFLOAT3                               m_lightPosition;
+    DirectX::XMFLOAT4X4                             m_lightView = IDENTITY_MATRIX;
+    DirectX::XMFLOAT4X4                             m_lightProj = IDENTITY_MATRIX;
 };
