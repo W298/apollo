@@ -84,7 +84,7 @@ float CalcTessFactor(float3 p)
 {
     float d = distance(p, cb.cameraPosition.xyz);
     float s = saturate((d - near) / (far - near));
-    return pow(2, -8 * pow(s, 2) + 8);
+    return pow(2.0f, -8 * pow(s, 0.5f) + 8);
 }
 
 PatchTess ConstantHS(InputPatch<VS_OUTPUT, 4> patch, int patchID : SV_PrimitiveID)
@@ -242,24 +242,24 @@ float CalcShadowFactor(float4 shadowPosH)
     return percentLit / 9.0f;
 }
 
-float hash(float n)
+float hash(float2 p)
 {
-    return frac(sin(n) * 43758.5453);
+    return frac(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x))));
 }
 
-float noise(float3 x)
+float noise(float2 x)
 {
-    // The noise function returns a value in the range -1.0f -> 1.0f
-    float3 p = floor(x);
-    float3 f = frac(x);
+    float2 i = floor(x);
+    float2 f = frac(x);
 
-    f = f * f * (3.0 - 2.0 * f);
-    float n = p.x + p.y * 57.0 + 113.0 * p.z;
+	// Four corners in 2D of a tile
+    float a = hash(i);
+    float b = hash(i + float2(1.0, 0.0));
+    float c = hash(i + float2(0.0, 1.0));
+    float d = hash(i + float2(1.0, 1.0));
 
-    return lerp(lerp(lerp(hash(n + 0.0), hash(n + 1.0), f.x),
-				lerp(hash(n + 57.0), hash(n + 58.0), f.x), f.y),
-				lerp(lerp(hash(n + 113.0), hash(n + 114.0), f.x),
-				lerp(hash(n + 170.0), hash(n + 171.0), f.x), f.y), f.z);
+    float2 u = f * f * (3.0 - 2.0 * f);
+    return lerp(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
 }
 
 PS_OUTPUT PS(DS_OUT input)
@@ -303,9 +303,15 @@ PS_OUTPUT PS(DS_OUT input)
     float3 ambient = float3(0.008f, 0.008f, 0.008f) * cb.lightColor.xyz;
 
     float shadowFactor = CalcShadowFactor(mul(float4(input.catPos, 1.0f), cb.shadowTransform));
-    float shadowCorrector = lerp(0.8f, 1.0f, max(dot(normCatPos, -cb.lightDirection.xyz), 0.0f));
+    float shadowCorrector = lerp(0.75f, 1.0f, max(dot(normCatPos, -cb.lightDirection.xyz), 0.0f));
 
-    float4 final = float4(saturate((diffuse * saturate(shadowFactor + shadowCorrector) + ambient) * texColor.rgb), texColor.a);
+    float noise1 = noise(sTexCoord * 10000.0f);
+    float noise2 = noise(sTexCoord * 20000.0f);
+
+    float h = distance(input.catPos, float3(0, 0, 0));
+    h -= 150.0f;
+
+    float4 final = float4(saturate((diffuse * saturate(shadowFactor + shadowCorrector) + ambient) * texColor.rgb * lerp(0.95f, 1.0f, noise1) * lerp(0.92f, 1.0f, noise2) * lerp(0.98f, 1.0f, h)), texColor.a);
 	final.a = 1;
     output.color = final;
 

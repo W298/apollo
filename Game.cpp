@@ -716,14 +716,8 @@ void Game::CreateDeviceDependentResources()
     }
 
     // Compute sphere vertices and indices
-    GeometryGenerator::MeshData data = GeometryGenerator::CreateQuadBox(300.0f, 300.0f, 300.0f, 8);
-
-    std::vector<VertexPosition> vertexData;
-    for (GeometryGenerator::Vertex& v : data.Vertices)
-    {
-        vertexData.push_back(VertexPosition(v.Position));
-	}
-
+    GeometryGenerator::MeshData data = GeometryGenerator::CreateQuadBox(300.0f, 300.0f, 300.0f, 7);
+	const auto vertexData = std::vector<VertexPosition>(data.Vertices);
     const auto indexData = std::vector<uint32_t>(data.Indices32);
 
     const UINT vertexBufferSize = static_cast<UINT>(sizeof(VertexPosition) * vertexData.size());

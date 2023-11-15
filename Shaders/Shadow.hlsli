@@ -73,7 +73,7 @@ float CalcTessFactor(float3 p)
 {
     float d = distance(p, cb.cameraPosition.xyz);
     float s = saturate((d - near) / (far - near));
-    return pow(2, -8 * pow(s, 2) + 8);
+    return pow(2.0f, -8 * pow(s, 0.5f) + 8);
 }
 
 PatchTess ConstantHS(InputPatch<VS_OUTPUT, 4> patch, int patchID : SV_PrimitiveID)
