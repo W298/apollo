@@ -60,6 +60,7 @@ struct DS_OUT
 Texture2D texMap[5] : register(t0);
 SamplerState samAnisotropic : register(s0);
 SamplerComparisonState samShadow : register(s1);
+SamplerState samPoint : register(s2);
 
 //--------------------------------------------------------------------------------------
 // Vertex Shader
@@ -76,7 +77,6 @@ VS_OUTPUT VS(VS_INPUT input)
 //--------------------------------------------------------------------------------------
 // Constant Hull Shader
 //--------------------------------------------------------------------------------------
-
 static const float near = 20.0f;
 static const float far = 150.0f;
 
@@ -137,11 +137,6 @@ HS_OUT HS(InputPatch<VS_OUTPUT, 4> input, int vertexIdx : SV_OutputControlPointI
 //--------------------------------------------------------------------------------------
 // Domain Shader
 //--------------------------------------------------------------------------------------
-
-static const float2 size = { 2.0, 0.0 };
-static const float3 off = { -1.0, 0.0, 1.0 };
-static const float2 nTex = { 11520, 11520 };
-
 [domain("quad")]
 DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, PatchTess patch)
 {
@@ -172,10 +167,25 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
 
     // Divide texture coordinates into two parts and re-mapping.
     int texIndex = round(gTexCoord.x) + 2;
-    float2 sTexCoord = float2(texIndex == 0 ? gTexCoord.x * 2 : (gTexCoord.x - 0.5f) * 2.0f, gTexCoord.y);
+	float2 sTexCoord = float2(round(gTexCoord.x) == 0 ? saturate(gTexCoord.x * 2) : saturate((gTexCoord.x - 0.5f) * 2.0f), gTexCoord.y);
 
     // Get height from texture.
-    float height = texMap[texIndex].SampleLevel(samAnisotropic, sTexCoord, level).r;
+    float height;
+
+    // If vertex near border, use point sampling.
+    if (sTexCoord.x <= 0)
+    {
+        height = texMap[texIndex].SampleLevel(samPoint, sTexCoord, level).r;
+    }
+    else if (sTexCoord.x >= 1)
+    {
+        height = texMap[texIndex].SampleLevel(samPoint, sTexCoord - float2(0.0001f, 0), level).r;
+    }
+    else
+    {
+        height = texMap[texIndex].SampleLevel(samAnisotropic, sTexCoord, level).r;
+    }
+
     float3 catPos = normCatPos * (150.0f + height * 0.5f);
 
     // Multiply MVP matrices.
@@ -192,13 +202,15 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
 //--------------------------------------------------------------------------------------
 // Pixel Shader
 //--------------------------------------------------------------------------------------
+static const float2 size = { 2.0, 0.0 };
+static const float3 off = { -1.0, 0.0, 1.0 };
 
-float3 GetNormalFromHeight(Texture2D tex, float2 sTexCoord, float multiplier)
+float3 GetNormalFromHeight(Texture2D tex, float2 texSize, float2 sTexCoord, float multiplier)
 {
-    float2 offxy = { off.x / nTex.x, off.y / nTex.y };
-    float2 offzy = { off.z / nTex.x, off.y / nTex.y };
-    float2 offyx = { off.y / nTex.x, off.x / nTex.y };
-    float2 offyz = { off.y / nTex.x, off.z / nTex.y };
+    float2 offxy = { off.x / texSize.x, off.y / texSize.y };
+    float2 offzy = { off.z / texSize.x, off.y / texSize.y };
+    float2 offyx = { off.y / texSize.x, off.x / texSize.y };
+    float2 offyz = { off.y / texSize.x, off.z / texSize.y };
 
     float a = tex.Sample(samAnisotropic, sTexCoord + offxy * multiplier).r;
     float b = tex.Sample(samAnisotropic, sTexCoord + offzy * multiplier).r;
@@ -209,6 +221,23 @@ float3 GetNormalFromHeight(Texture2D tex, float2 sTexCoord, float multiplier)
     float3 vb = normalize(float3(size.yx, (d - c) * 0.5f));
 
     return normalize(cross(va, vb));
+}
+
+float3 GetTBNNormal(Texture2D tex, float2 sTexCoord, float3x3 TBN, float2 offset)
+{
+    uint width, height, numMips;
+    tex.GetDimensions(0, width, height, numMips);
+    float2 texSize = float2(width, height);
+
+	// Calculate local normal from height map.
+    float3 n1 = GetNormalFromHeight(tex, texSize, sTexCoord + offset, 1.0f);
+    float3 n2 = GetNormalFromHeight(tex, texSize, sTexCoord + offset, 2.0f);
+    float3 n3 = GetNormalFromHeight(tex, texSize, sTexCoord + offset, 3.0f);
+
+    float3 localNormal = (n1 * 3.0f + n2 * 2.0f + n3 * 1.0f) / 6.0f;
+    localNormal = normalize(localNormal);
+
+    return normalize(mul(localNormal, TBN));
 }
 
 float CalcShadowFactor(float4 shadowPosH)
@@ -280,33 +309,41 @@ PS_OUTPUT PS(DS_OUT input)
 	int texIndex = round(gTexCoord.x);
     float2 sTexCoord = float2(texIndex == 0 ? gTexCoord.x * 2 : (gTexCoord.x - 0.5f) * 2.0f, gTexCoord.y);
 
-    // Calculate local normal from height map.
-    float3 n1 = GetNormalFromHeight(texMap[texIndex + 2], sTexCoord, 1.0f);
-    float3 n2 = GetNormalFromHeight(texMap[texIndex + 2], sTexCoord, 2.0f);
-	float3 n3 = GetNormalFromHeight(texMap[texIndex + 2], sTexCoord, 3.0f);
-
-    float3 localNormal = (n1 * 3.0f + n2 * 2.0f + n3 * 1.0f) / 6.0f;
-    localNormal = normalize(localNormal);
-
     // Calculate TBN Matrix.
     float3 N = normCatPos;
     float3 T = float3(-sin(theta), 0, cos(theta));
     float3 B = cross(N, T);
-
-    // Calculate Normal.
     float3x3 TBN = float3x3(normalize(T), normalize(B), normalize(N));
-    float3 normal = normalize(mul(localNormal, TBN));
 
     // Merge Results.
-    float4 texColor = texMap[texIndex].Sample(samAnisotropic, sTexCoord);
+    float4 texColor;
+    float3 normal;
+
+    // If point near border, use point sampling.
+    if (sTexCoord.x <= 0.0002f)
+    {
+        texColor = texMap[texIndex].SampleLevel(samPoint, sTexCoord, 0);
+        normal = GetTBNNormal(texMap[texIndex + 2], sTexCoord, TBN, float2(0.0002f, 0));
+    }
+    else if (sTexCoord.x >= 1 - 0.0002f)
+    {
+        texColor = texMap[texIndex].SampleLevel(samPoint, sTexCoord, 0);
+        normal = GetTBNNormal(texMap[texIndex + 2], sTexCoord, TBN, float2(-0.0002f, 0));
+    }
+    else
+    {
+        texColor = texMap[texIndex].Sample(samAnisotropic, sTexCoord);
+        normal = GetTBNNormal(texMap[texIndex + 2], sTexCoord, TBN, float2(0, 0));
+    }
+
     float3 diffuse = saturate(dot(normal, -cb.lightDirection.xyz)) * cb.lightColor.xyz;
     float3 ambient = float3(0.008f, 0.008f, 0.008f) * cb.lightColor.xyz;
 
     float shadowFactor = CalcShadowFactor(mul(float4(input.catPos, 1.0f), cb.shadowTransform));
     float shadowCorrector = lerp(0.75f, 1.0f, max(dot(normCatPos, -cb.lightDirection.xyz), 0.0f));
 
-    float noise1 = noise(sTexCoord * 10000.0f);
-    float noise2 = noise(sTexCoord * 20000.0f);
+    float noise1 = noise(sTexCoord * 30000.0f);
+    float noise2 = noise(sTexCoord * 60000.0f);
 
     float h = distance(input.catPos, float3(0, 0, 0));
     h -= 150.0f;

@@ -65,7 +65,6 @@ VS_OUTPUT VS(VS_INPUT input)
 //--------------------------------------------------------------------------------------
 // Constant Hull Shader
 //--------------------------------------------------------------------------------------
-
 static const float near = 20.0f;
 static const float far = 150.0f;
 
@@ -126,7 +125,6 @@ HS_OUT HS(InputPatch<VS_OUTPUT, 4> input, int vertexIdx : SV_OutputControlPointI
 //--------------------------------------------------------------------------------------
 // Domain Shader
 //--------------------------------------------------------------------------------------
-
 [domain("quad")]
 DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, PatchTess patch)
 {

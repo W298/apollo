@@ -86,6 +86,7 @@ void Game::Update(DX::StepTimer const& timer)
     PIXBeginEvent(PIX_COLOR_DEFAULT, L"Update");
 
     const auto elapsedTime = static_cast<float>(timer.GetElapsedSeconds());
+    OutputDebugStringW((std::to_wstring(1.0f / elapsedTime) + L"\n").c_str());
 
     // Handle Input
     {
@@ -145,7 +146,7 @@ void Game::Update(DX::StepTimer const& timer)
     }
 
     // Light rotation update
-    m_lightDirection = XMVector3TransformCoord(m_lightDirection, XMMatrixRotationY(elapsedTime / 12.0f));
+    // m_lightDirection = XMVector3TransformCoord(m_lightDirection, XMMatrixRotationY(elapsedTime / 12.0f));
 
     // Update Shadow Transform
     {
@@ -491,7 +492,22 @@ void Game::CreateDeviceDependentResources()
             D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK
         );
 
-        std::array<const CD3DX12_STATIC_SAMPLER_DESC, 2> staticSamplers = { anisotropicWrap, shadow };
+        const CD3DX12_STATIC_SAMPLER_DESC pointWrap(
+            2,                                                  // shaderRegister
+            D3D12_FILTER_COMPARISON_MIN_MAG_MIP_POINT,          // filter
+            D3D12_TEXTURE_ADDRESS_MODE_WRAP,                    // addressU
+            D3D12_TEXTURE_ADDRESS_MODE_WRAP,                    // addressV
+            D3D12_TEXTURE_ADDRESS_MODE_WRAP,                    // addressW
+            0.0f,                                               // mipLODBias
+            16,                                                 // maxAnisotropy
+            D3D12_COMPARISON_FUNC_LESS_EQUAL,
+            D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE,
+            0.0f,                                               // minLOD
+            D3D12_FLOAT32_MAX,                                  // maxLOD
+            D3D12_SHADER_VISIBILITY_ALL
+        );
+
+        std::array<const CD3DX12_STATIC_SAMPLER_DESC, 3> staticSamplers = { anisotropicWrap, shadow, pointWrap };
 
         D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
             D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
