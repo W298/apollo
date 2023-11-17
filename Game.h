@@ -7,6 +7,7 @@
 #include <DirectXCollision.h>
 
 #include "DeviceResources.h"
+#include "FaceTree.h"
 #include "Keyboard.h"
 #include "Mouse.h"
 #include "ShadowMap.h"
@@ -85,6 +86,8 @@ private:
     static_assert(sizeof(PaddedShadowCB) ==
         2 * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT, "PaddedShadowCB is not aligned properly");
 
+    void CommitQuadNode();
+
     void Update(DX::StepTimer const& timer);
     void Render();
 
@@ -125,7 +128,6 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_indexBuffer;
     D3D12_VERTEX_BUFFER_VIEW                        m_vertexBufferView;
     D3D12_INDEX_BUFFER_VIEW                         m_indexBufferView;
-    unsigned int                                    m_indexCount;
 
     // CB
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_cbUploadHeap;
@@ -192,4 +194,10 @@ private:
     DirectX::XMFLOAT3                               m_lightPosition;
     DirectX::XMFLOAT4X4                             m_lightView = IDENTITY_MATRIX;
     DirectX::XMFLOAT4X4                             m_lightProj = IDENTITY_MATRIX;
+
+    std::vector<FaceTree*>                          m_faceTrees;
+    std::vector<QuadNode*>  				        m_renderQuadNode;
+
+    uint32_t										m_totalIndexCount;
+    uint32_t										m_renderIndexCount = 0;
 };

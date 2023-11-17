@@ -11,6 +11,7 @@
 #include "DDSTextureLoader.h"
 #include "DirectXHelpers.h"
 #include "GeometryGenerator.h"
+#include "FaceTree.h"
 #include "ReadData.h"
 #include "ResourceUploadBatch.h"
 
@@ -80,6 +81,27 @@ void Game::Tick()
     Render();
 }
 
+void Game::CommitQuadNode()
+{
+    std::vector<uint32_t> renderIndices;
+
+    for (QuadNode* quadNode : m_renderQuadNode)
+    {
+        renderIndices.insert(
+            renderIndices.end(), &quadNode->m_index[0], &quadNode->m_index[4]
+        );
+    }
+
+    UINT8* pBegin;
+    const auto range = CD3DX12_RANGE(0, 0);
+    DX::ThrowIfFailed(m_indexBuffer->Map(0, &range, reinterpret_cast<void**>(&pBegin)));
+    ZeroMemory(pBegin, sizeof(uint32_t) * m_totalIndexCount);
+    memcpy(pBegin, renderIndices.data(), sizeof(uint32_t) * renderIndices.size());
+    m_indexBuffer->Unmap(0, nullptr);
+
+    m_renderIndexCount = renderIndices.size();
+}
+
 // Updates the world.
 void Game::Update(DX::StepTimer const& timer)
 {
@@ -96,6 +118,19 @@ void Game::Update(DX::StepTimer const& timer)
             ExitGame();
         }
         const auto mouse = m_mouse->GetState();
+
+        if (keyboard.B)
+        {
+            m_renderQuadNode.clear();
+            m_renderQuadNode.push_back(m_faceTrees[0]->m_rootNode->m_children[0]->m_children[0]->m_children[0]);
+        }
+        else if (keyboard.N)
+        {
+            m_renderQuadNode.clear();
+            m_renderQuadNode.push_back(m_faceTrees[0]->m_rootNode->m_children[0]->m_children[0]);
+        }
+
+        CommitQuadNode();
 
         m_orbitMode = keyboard.O ? true : keyboard.F ? false : m_orbitMode;
 
@@ -285,7 +320,7 @@ void Game::Render()
         commandList->IASetIndexBuffer(&m_indexBufferView);
 
         // Draw the sphere.
-        commandList->DrawIndexedInstanced(m_indexCount, 1, 0, 0, 0);
+        commandList->DrawIndexedInstanced(m_renderIndexCount, 1, 0, 0, 0);
 
         // Change back to GENERIC_READ so we can read the texture in a shader.
         TransitionResource(commandList, m_shadowMap->Resource(), D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ);
@@ -331,7 +366,7 @@ void Game::Render()
         commandList->IASetIndexBuffer(&m_indexBufferView);
 
         // Draw the sphere.
-        commandList->DrawIndexedInstanced(m_indexCount, 1, 0, 0, 0);
+        commandList->DrawIndexedInstanced(m_renderIndexCount, 1, 0, 0, 0);
     }
 
     PIXEndEvent(commandList);
@@ -691,7 +726,7 @@ void Game::CreateDeviceDependentResources()
         psoDesc.HS = { hullShaderBlob.data(), hullShaderBlob.size() };
         psoDesc.DS = { domainShaderBlob.data(), domainShaderBlob.size() };
         psoDesc.PS = { pixelShaderBlob.data(), pixelShaderBlob.size() };
-        psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+        psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
         psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
         psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
     	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
@@ -732,13 +767,16 @@ void Game::CreateDeviceDependentResources()
     }
 
     // Compute sphere vertices and indices
-    GeometryGenerator::MeshData data = GeometryGenerator::CreateQuadBox(300.0f, 300.0f, 300.0f, 7);
-	const auto vertexData = std::vector<VertexPosition>(data.Vertices);
-    const auto indexData = std::vector<uint32_t>(data.Indices32);
+    auto geoInfo = GeometryGenerator::CreateQuadBox(300.0f, 300.0f, 300.0f, 3);
+    m_faceTrees = geoInfo->faceTrees;
+    m_totalIndexCount = geoInfo->totalIndexCount;
+
+	const auto vertexData = std::vector<VertexPosition>(geoInfo->vertices);
+
+    delete geoInfo;
 
     const UINT vertexBufferSize = static_cast<UINT>(sizeof(VertexPosition) * vertexData.size());
-    const UINT indexBufferSize = static_cast <UINT>(sizeof(uint32_t) * indexData.size());
-    m_indexCount = static_cast<unsigned int>(indexData.size());
+    const UINT indexBufferSize = static_cast <UINT>(sizeof(uint32_t) * m_totalIndexCount);
 
     // Create vertex buffer
     {
@@ -760,15 +798,16 @@ void Game::CreateDeviceDependentResources()
 
     // Create index buffer
     {
-        ResourceUploadBatch resourceUpload(device);
-        resourceUpload.Begin();
+        const D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+        const CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize);
 
         DX::ThrowIfFailed(
-            CreateStaticBuffer(device, resourceUpload, indexData, D3D12_RESOURCE_STATE_INDEX_BUFFER, &m_indexBuffer)
-        );
-
-        auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
-        uploadResourcesFinished.wait();
+            device->CreateCommittedResource(&heapProps,
+                D3D12_HEAP_FLAG_NONE,
+                &resDesc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(m_indexBuffer.ReleaseAndGetAddressOf())));
 
         // Initialize the index buffer view.
         m_indexBufferView.BufferLocation = m_indexBuffer->GetGPUVirtualAddress();
@@ -792,7 +831,7 @@ void Game::CreateDeviceDependentResources()
     m_camRight = DEFAULT_RIGHT_VECTOR;
     m_camYaw = -3.0f;
     m_camPitch = 0.37f;
-    m_camPosition = XMVectorSet(0.0f, 0.0f, 200.0f, 0.0f);
+    m_camPosition = XMVectorSet(0.0f, 0.0f, -200.0f, 0.0f);
     m_camLookTarget = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
 
     m_worldMatrix = XMMatrixIdentity();
