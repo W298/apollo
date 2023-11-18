@@ -11,7 +11,6 @@
 #include "DDSTextureLoader.h"
 #include "DirectXHelpers.h"
 #include "GeometryGenerator.h"
-#include "FaceTree.h"
 #include "ReadData.h"
 #include "ResourceUploadBatch.h"
 
@@ -83,23 +82,14 @@ void Game::Tick()
 
 void Game::CommitQuadNode()
 {
-    std::vector<uint32_t> renderIndices;
-
-    for (QuadNode* quadNode : m_renderQuadNode)
-    {
-        renderIndices.insert(
-            renderIndices.end(), &quadNode->m_index[0], &quadNode->m_index[4]
-        );
-    }
-
     UINT8* pBegin;
     const auto range = CD3DX12_RANGE(0, 0);
     DX::ThrowIfFailed(m_indexBuffer->Map(0, &range, reinterpret_cast<void**>(&pBegin)));
-    ZeroMemory(pBegin, sizeof(uint32_t) * m_totalIndexCount);
-    memcpy(pBegin, renderIndices.data(), sizeof(uint32_t) * renderIndices.size());
+    ZeroMemory(pBegin, sizeof(uint32_t) * m_masterIndexCount);
+    memcpy(pBegin, m_renderIndices.data(), sizeof(uint32_t) * m_renderIndices.size());
     m_indexBuffer->Unmap(0, nullptr);
 
-    m_renderIndexCount = renderIndices.size();
+    m_renderIndexCount = m_renderIndices.size();
 }
 
 // Updates the world.
@@ -108,7 +98,6 @@ void Game::Update(DX::StepTimer const& timer)
     PIXBeginEvent(PIX_COLOR_DEFAULT, L"Update");
 
     const auto elapsedTime = static_cast<float>(timer.GetElapsedSeconds());
-    OutputDebugStringW((std::to_wstring(1.0f / elapsedTime) + L"\n").c_str());
 
     // Handle Input
     {
@@ -118,19 +107,6 @@ void Game::Update(DX::StepTimer const& timer)
             ExitGame();
         }
         const auto mouse = m_mouse->GetState();
-
-        if (keyboard.B)
-        {
-            m_renderQuadNode.clear();
-            m_renderQuadNode.push_back(m_faceTrees[0]->m_rootNode->m_children[0]->m_children[0]->m_children[0]);
-        }
-        else if (keyboard.N)
-        {
-            m_renderQuadNode.clear();
-            m_renderQuadNode.push_back(m_faceTrees[0]->m_rootNode->m_children[0]->m_children[0]);
-        }
-
-        CommitQuadNode();
 
         m_orbitMode = keyboard.O ? true : keyboard.F ? false : m_orbitMode;
 
@@ -176,8 +152,16 @@ void Game::Update(DX::StepTimer const& timer)
             // Manipulate shadow bias using scroll value.
             m_shadowBias += (mouse.scrollWheelValue - m_scrollWheelValue) * elapsedTime / 1000.0f;
             m_scrollWheelValue = static_cast<float>(mouse.scrollWheelValue);
-            OutputDebugStringW((std::to_wstring(m_shadowBias) + L"\n").c_str());
         }
+
+        // Update frustum every frames.
+        m_frustum.ConstructFrustum(1000.0f, m_viewMatrix, m_projectionMatrix);
+
+    	m_renderIndices.clear();
+        m_faceTrees[0]->m_rootNode->Render(m_frustum, m_masterIndices, OUT m_renderIndices);
+        m_faceTrees[5]->m_rootNode->Render(m_frustum, m_masterIndices, OUT m_renderIndices);
+
+        CommitQuadNode();
     }
 
     // Light rotation update
@@ -767,16 +751,17 @@ void Game::CreateDeviceDependentResources()
     }
 
     // Compute sphere vertices and indices
-    auto geoInfo = GeometryGenerator::CreateQuadBox(300.0f, 300.0f, 300.0f, 3);
+    auto geoInfo = GeometryGenerator::CreateQuadBox(300.0f, 300.0f, 300.0f, 6);
     m_faceTrees = geoInfo->faceTrees;
-    m_totalIndexCount = geoInfo->totalIndexCount;
 
 	const auto vertexData = std::vector<VertexPosition>(geoInfo->vertices);
+    m_masterIndices = std::vector<uint32_t>(geoInfo->indices);
+    m_masterIndexCount = m_masterIndices.size();
 
     delete geoInfo;
 
     const UINT vertexBufferSize = static_cast<UINT>(sizeof(VertexPosition) * vertexData.size());
-    const UINT indexBufferSize = static_cast <UINT>(sizeof(uint32_t) * m_totalIndexCount);
+    const UINT indexBufferSize = static_cast <UINT>(sizeof(uint32_t) * m_masterIndexCount);
 
     // Create vertex buffer
     {
@@ -829,8 +814,8 @@ void Game::CreateDeviceDependentResources()
     m_camUp = DEFAULT_UP_VECTOR;
     m_camForward = DEFAULT_FORWARD_VECTOR;
     m_camRight = DEFAULT_RIGHT_VECTOR;
-    m_camYaw = -3.0f;
-    m_camPitch = 0.37f;
+    m_camYaw = -6.2f;
+    m_camPitch = 0.0f;
     m_camPosition = XMVectorSet(0.0f, 0.0f, -200.0f, 0.0f);
     m_camLookTarget = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
 
@@ -848,6 +833,9 @@ void Game::CreateWindowSizeDependentResources()
     auto size = m_deviceResources->GetOutputSize();
     m_projectionMatrix = XMMatrixPerspectiveFovLH(
         XM_PIDIV4, float(size.right) / float(size.bottom), 0.01f, 1000.0f);
+
+    // Construct Frustum
+    m_frustum.ConstructFrustum(1000.0f, m_viewMatrix, m_projectionMatrix);
 
     // The frame index will be reset to zero when the window size changes
     // So we need to tell the GPU to signal our fence starting with zero
@@ -877,6 +865,11 @@ void Game::OnDeviceLost()
     m_srvHeap.Reset();
 
     m_shadowMap.reset();
+
+    for (const FaceTree* faceTree : m_faceTrees)
+        delete faceTree;
+    m_masterIndices.clear();
+    m_renderIndices.clear();
 
     m_fence.Reset();
 }

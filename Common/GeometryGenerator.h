@@ -11,7 +11,6 @@ class GeometryGenerator
 public:
 	struct MeshData
 	{
-	public:
 		std::vector<DirectX::VertexPosition> vertices;
         std::vector<std::uint32_t> indices;
 	};
@@ -19,16 +18,17 @@ public:
 	struct GeometryInfo
 	{
 		std::vector<DirectX::VertexPosition> vertices;
+		std::vector<uint32_t> indices;
 		std::vector<FaceTree*> faceTrees;
-		uint32_t totalIndexCount;
 
 		GeometryInfo(
-			const std::vector<DirectX::VertexPosition>& vertices, 
-			const std::vector<FaceTree*>& faceTrees, uint32_t totalIndexCount)
+			const std::vector<DirectX::VertexPosition>& vertices,
+			const std::vector<uint32_t>& indices,
+			const std::vector<FaceTree*>& faceTrees)
 		{
 			this->vertices = vertices;
+			this->indices = indices;
 			this->faceTrees = faceTrees;
-			this->totalIndexCount = totalIndexCount;
 		}
 	};
 

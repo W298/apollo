@@ -8,6 +8,7 @@
 
 #include "DeviceResources.h"
 #include "FaceTree.h"
+#include "Frustum.h"
 #include "Keyboard.h"
 #include "Mouse.h"
 #include "ShadowMap.h"
@@ -158,6 +159,17 @@ private:
     DirectX::BoundingSphere                         m_sceneBounds;
     float										    m_shadowBias = 0.003f;
 
+    // Frustum
+    Frustum										    m_frustum;
+
+    // QuadTree instances
+    std::vector<FaceTree*>                          m_faceTrees;
+
+    std::vector<uint32_t>							m_masterIndices;
+    uint32_t										m_masterIndexCount = 0;
+    std::vector<uint32_t>  				            m_renderIndices;
+    uint32_t										m_renderIndexCount = 0;
+
     // A synchronization fence and an event. These members will be used
     // to synchronize the CPU with the GPU so that there will be no
     // contention for the constant buffers. 
@@ -194,10 +206,4 @@ private:
     DirectX::XMFLOAT3                               m_lightPosition;
     DirectX::XMFLOAT4X4                             m_lightView = IDENTITY_MATRIX;
     DirectX::XMFLOAT4X4                             m_lightProj = IDENTITY_MATRIX;
-
-    std::vector<FaceTree*>                          m_faceTrees;
-    std::vector<QuadNode*>  				        m_renderQuadNode;
-
-    uint32_t										m_totalIndexCount;
-    uint32_t										m_renderIndexCount = 0;
 };

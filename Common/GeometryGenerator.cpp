@@ -29,8 +29,8 @@ GeometryGenerator::GeometryInfo* GeometryGenerator::CreateQuadBox(float width, f
 
 	meshData.vertices.assign(&v[0], &v[8]);
 
-	uint32_t totalIndexCount = pow(4, numSubdivisions + 1) * 6;
-	uint32_t faceIndexCount = totalIndexCount / 6;
+	const uint32_t totalIndexCount = pow(4, numSubdivisions + 1) * 6;
+	const uint32_t faceIndexCount = totalIndexCount / 6;
 
 	// Create the indices.
 	uint32_t i[24];
@@ -54,34 +54,29 @@ GeometryGenerator::GeometryInfo* GeometryGenerator::CreateQuadBox(float width, f
 	i[20] = 3; i[21] = 2; i[22] = 4; i[23] = 5;
 
 	meshData.indices.assign(&i[0], &i[24]);
-	
-	// Create Face Trees. 
-	std::vector<FaceTree*> faceTrees;
-	for (int f = 0; f < 6; f++)
-	{
-		uint32_t index[4];
-		index[0] = i[0 + f*4];
-		index[1] = i[1 + f*4];
-		index[2] = i[2 + f*4];
-		index[3] = i[3 + f*4];
-
-		const auto root = new QuadNode(0, faceIndexCount, index);
-		root->CalcCenter(meshData.vertices);
-
-		faceTrees.push_back(new FaceTree(root, faceIndexCount));
-	}
 
 	// Subdivide.
 	for (char level = 0; level < numSubdivisions; ++level)
 		SubdivideQuad(meshData);
 
-	// Create children of Face Trees.
+	// Create Face Trees. 
+	std::vector<FaceTree*> faceTrees;
 	for (int f = 0; f < 6; f++)
 	{
-		faceTrees[f]->m_rootNode->CreateChildren(numSubdivisions, meshData.vertices, meshData.indices, f * faceIndexCount);
+		uint32_t index[4];
+		index[0] = i[0 + f * 4];
+		index[1] = i[1 + f * 4];
+		index[2] = i[2 + f * 4];
+		index[3] = i[3 + f * 4];
+
+		const auto root = new QuadNode(0, faceIndexCount, index, f * faceIndexCount, width);
+		root->CalcCenter(meshData.vertices);
+		root->CreateChildren(min(numSubdivisions, 6u), meshData.vertices, meshData.indices);
+
+		faceTrees.push_back(new FaceTree(root, faceIndexCount));
 	}
 
-	return new GeometryInfo(meshData.vertices, faceTrees, totalIndexCount);
+	return new GeometryInfo(meshData.vertices, meshData.indices, faceTrees);
 }
 
 void GeometryGenerator::SubdivideQuad(MeshData& meshData)
