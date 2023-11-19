@@ -5,6 +5,8 @@
 #pragma once
 #include "pch.h"
 
+#include <SimpleMath.h>
+
 #include "Frustum.h"
 #include "VertexTypes.h"
 
@@ -30,7 +32,7 @@ public:
 	void CreateChildren(
 		const char limit, 
 		const std::vector<DirectX::VertexPosition>& vertices, 
-		const std::vector<uint32_t>& indices)
+		const std::vector<uint32_t>& indices, std::vector<VertexPosition>& debugVertexData, std::vector<uint32_t>& debugIndexData)
 	{
 		if (m_level + 1 > limit)
 			return;
@@ -46,33 +48,72 @@ public:
 			index[2] = indices[2 * qqic + c * qic + m_baseAddress];
 			index[3] = indices[3 * qqic + c * qic + m_baseAddress];
 
-			const auto child = new QuadNode(m_level + 1, qic, index, c * qic + m_baseAddress, m_width / 4);
-			child->CalcCenter(vertices);
-			child->CreateChildren(limit, vertices, indices);
+			const auto child = new QuadNode(m_level + 1, qic, index, c * qic + m_baseAddress, m_width / 2);
+			child->CalcCenter(vertices, debugVertexData, debugIndexData);
+			child->CreateChildren(limit, vertices, indices, debugVertexData, debugIndexData);
 
 			m_children[c] = child;
 		}
 	}
 
-	void CalcCenter(const std::vector<DirectX::VertexPosition>& vertices)
+	void CalcCenter(const std::vector<DirectX::VertexPosition>& vertices, std::vector<VertexPosition>& debugVertexData, std::vector<uint32_t>& debugIndexData)
 	{
-		auto center = DirectX::XMFLOAT3(0, 0, 0);
+		auto center = DirectX::XMVectorSet(0, 0, 0, 0);
 		for (const uint32_t& i : m_cornerIndex)
 		{
-			center = DirectX::XMFLOAT3(
-				center.x + vertices[i].position.x,
-				center.y + vertices[i].position.y,
-				center.z + vertices[i].position.z
-			);
+			center += center + XMLoadFloat3(&vertices[i].position);
 		}
-		center = DirectX::XMFLOAT3(center.x / 4.0f, center.y / 4.0f, center.z / 4.0f);
-		m_centerPosition = center;
+		center /= 4.0f;
+
+		center = XMVector3Normalize(center) * (150.0f - m_width);
+		XMStoreFloat3(&m_centerPosition, center);
+
+		auto n = SimpleMath::Vector3(XMVector3Normalize(center));
+
+		float theta = atan2(n.z, n.x);
+		auto t = SimpleMath::Vector3(-sin(theta), 0.0f, cos(theta));
+		t.Normalize();
+
+		auto b = n.Cross(t);
+		b.Normalize();
+
+		SimpleMath::Quaternion q = SimpleMath::Quaternion::CreateFromRotationMatrix(SimpleMath::Matrix(SimpleMath::Vector4(t), SimpleMath::Vector4(b), SimpleMath::Vector4(n), SimpleMath::Vector4::Zero));
+
+		XMFLOAT4 qv = XMFLOAT4(q.x, q.y, q.z, q.w);
+
+		XMFLOAT3 centerf4;
+		XMStoreFloat3(&centerf4, center);
+
+		m_obb = BoundingOrientedBox(
+			centerf4,
+			XMFLOAT3(m_width * 1.5f, m_width * 1.5f, 1),
+			qv);
+
+		XMFLOAT3 corners[8];
+		m_obb.GetCorners(corners);
+
+		if (m_level != 5) return;
+
+		std::vector<uint32_t> tary = { 0, 1, 2, 2, 3, 0, 4, 0, 3, 3, 7, 4, 5, 4, 7, 7, 6, 5, 1, 5, 6, 6, 2, 1, 2, 6, 7, 7, 3, 2, 5, 1, 0, 0, 4, 5 };
+		for (int i = 0; i < tary.size(); i++)
+		{
+			tary[i] += debugVertexData.size();
+		}
+
+		debugIndexData.insert(debugIndexData.end(), tary.begin(), tary.end());
+
+		for (XMFLOAT3 corner : corners)
+		{
+			debugVertexData.push_back(VertexPosition(corner));
+		}
 	}
 
-	void Render(IN Frustum& frustum, IN const std::vector<uint32_t>& indices, OUT std::vector<uint32_t>& retVec) const
+	void Render(IN BoundingFrustum& frustum, IN const std::vector<uint32_t>& indices, OUT std::vector<uint32_t>& retVec, OUT uint32_t& culledQuadCount) const
 	{
-		if (!frustum.CheckCube(m_centerPosition.x, m_centerPosition.y, m_centerPosition.z, m_width / 2.0f))
+		const ContainmentType result = frustum.Contains(m_obb);
+		if (result <= 0 && m_level >= 4)
 		{
+			culledQuadCount += m_indexCount / 4;
 			return;
 		}
 
@@ -82,7 +123,7 @@ public:
 			if (m_children[i] != nullptr)
 			{
 				visibleChildCount++;
-				m_children[i]->Render(frustum, indices, retVec);
+				m_children[i]->Render(frustum, indices, retVec, culledQuadCount);
 			}
 		}
 
@@ -98,6 +139,7 @@ public:
 	uint32_t								m_cornerIndex[4];
 	uint32_t								m_baseAddress;
 	DirectX::XMFLOAT3						m_centerPosition;
+	BoundingOrientedBox						m_obb;
 	float									m_width;
 	QuadNode*								m_children[4] = { nullptr, nullptr, nullptr, nullptr };
 };

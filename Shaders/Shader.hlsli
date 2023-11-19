@@ -83,6 +83,8 @@ static const float far = 150.0f;
 float CalcTessFactor(float3 p)
 {
     float d = distance(p, cb.cameraPosition.xyz);
+    d = floor(d / 10.0f) * 10.0f;
+
     float s = saturate((d - near) / (far - near));
     return pow(2.0f, -8 * pow(s, 0.5f) + 8);
 }
@@ -351,6 +353,8 @@ PS_OUTPUT PS(DS_OUT input)
     float4 final = float4(saturate((diffuse * saturate(shadowFactor + shadowCorrector) + ambient) * texColor.rgb * lerp(0.95f, 1.0f, noise1) * lerp(0.92f, 1.0f, noise2) * lerp(0.98f, 1.0f, h)), texColor.a);
 	final.a = 1;
     output.color = final;
+
+    // output.color = float4(0.2f, 0.2, 0.2f, 1);
 
     return output;
 }

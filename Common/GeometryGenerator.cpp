@@ -4,7 +4,7 @@
 using namespace std;
 using namespace DirectX;
 
-GeometryGenerator::GeometryInfo* GeometryGenerator::CreateQuadBox(float width, float height, float depth, std::uint32_t numSubdivisions)
+GeometryGenerator::GeometryInfo* GeometryGenerator::CreateQuadBox(float width, float height, float depth, std::uint32_t numSubdivisions, std::vector<VertexPosition>& debugVertexData, std::vector<uint32_t>& debugIndexData)
 {
 	MeshData meshData;
 
@@ -70,8 +70,8 @@ GeometryGenerator::GeometryInfo* GeometryGenerator::CreateQuadBox(float width, f
 		index[3] = i[3 + f * 4];
 
 		const auto root = new QuadNode(0, faceIndexCount, index, f * faceIndexCount, width);
-		root->CalcCenter(meshData.vertices);
-		root->CreateChildren(min(numSubdivisions, 6u), meshData.vertices, meshData.indices);
+		root->CalcCenter(meshData.vertices, debugVertexData, debugIndexData);
+		root->CreateChildren(min(numSubdivisions, 5u), meshData.vertices, meshData.indices, debugVertexData, debugIndexData);
 
 		faceTrees.push_back(new FaceTree(root, faceIndexCount));
 	}

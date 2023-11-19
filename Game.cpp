@@ -154,14 +154,24 @@ void Game::Update(DX::StepTimer const& timer)
             m_scrollWheelValue = static_cast<float>(mouse.scrollWheelValue);
         }
 
-        // Update frustum every frames.
-        m_frustum.ConstructFrustum(1000.0f, m_viewMatrix, m_projectionMatrix);
+        if (timer.GetTotalTicks() % 2 == 0)
+        {
+            BoundingFrustum bf;
+            auto det = XMMatrixDeterminant(m_viewMatrix);
+            m_boundingFrustum.Transform(bf, XMMatrixInverse(&det, m_viewMatrix));
 
-    	m_renderIndices.clear();
-        m_faceTrees[0]->m_rootNode->Render(m_frustum, m_masterIndices, OUT m_renderIndices);
-        m_faceTrees[5]->m_rootNode->Render(m_frustum, m_masterIndices, OUT m_renderIndices);
+            m_renderIndices.clear();
+            uint32_t totalCulledQuadCount = 0;
+            for (int i = 0; i < 6; i++)
+            {
+                uint32_t culledQuadCount = 0;
+                m_faceTrees[i]->m_rootNode->Render(bf, m_masterIndices, OUT m_renderIndices, OUT culledQuadCount);
+                totalCulledQuadCount += culledQuadCount;
+            }
+            CommitQuadNode();
 
-        CommitQuadNode();
+            OutputDebugStringW((L"Quad Culled : " + std::to_wstring(totalCulledQuadCount) + L" / " + std::to_wstring(((float)totalCulledQuadCount / (m_masterIndexCount / 4.0f)) * 100) + L" % Removed!" + L"\n").c_str());
+        }
     }
 
     // Light rotation update
@@ -351,6 +361,19 @@ void Game::Render()
 
         // Draw the sphere.
         commandList->DrawIndexedInstanced(m_renderIndexCount, 1, 0, 0, 0);
+
+
+
+
+
+
+        commandList->SetPipelineState(m_debugPSO.Get());
+
+        commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        commandList->IASetVertexBuffers(0, 1, &m_debugVBV);
+        commandList->IASetIndexBuffer(&m_debugIBV);
+
+        commandList->DrawIndexedInstanced(m_debugIndexData.size(), 1, 0, 0, 0);
     }
 
     PIXEndEvent(commandList);
@@ -710,7 +733,7 @@ void Game::CreateDeviceDependentResources()
         psoDesc.HS = { hullShaderBlob.data(), hullShaderBlob.size() };
         psoDesc.DS = { domainShaderBlob.data(), domainShaderBlob.size() };
         psoDesc.PS = { pixelShaderBlob.data(), pixelShaderBlob.size() };
-        psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
+        psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
         psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
         psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
     	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
@@ -748,10 +771,38 @@ void Game::CreateDeviceDependentResources()
             device->CreateGraphicsPipelineState(
                 &shadowPSODesc,
                 IID_PPV_ARGS(m_shadowPSO.ReleaseAndGetAddressOf())));
+
+        // Load debug shaders
+        auto debugVSBlob = DX::ReadData(L"DebugVS.cso");
+        auto debugPSBlob = DX::ReadData(L"DebugPS.cso");
+
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC debugPSODesc = {};
+        debugPSODesc.InputLayout = { s_inputElementDesc, _countof(s_inputElementDesc) };
+        debugPSODesc.pRootSignature = m_rootSignature.Get();
+        debugPSODesc.VS = { debugVSBlob.data(), debugVSBlob.size() };
+        debugPSODesc.PS = { debugPSBlob.data(), debugPSBlob.size() };
+        debugPSODesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
+        debugPSODesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+        debugPSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+        debugPSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+        debugPSODesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+        debugPSODesc.SampleMask = UINT_MAX;
+        debugPSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        debugPSODesc.NumRenderTargets = 1;
+        debugPSODesc.RTVFormats[0] = m_deviceResources->GetBackBufferFormat();
+        debugPSODesc.SampleDesc.Count = 1;
+        DX::ThrowIfFailed(
+            device->CreateGraphicsPipelineState(
+                &debugPSODesc,
+                IID_PPV_ARGS(m_debugPSO.ReleaseAndGetAddressOf())));
     }
 
     // Compute sphere vertices and indices
-    auto geoInfo = GeometryGenerator::CreateQuadBox(300.0f, 300.0f, 300.0f, 6);
+    auto geoInfo = GeometryGenerator::CreateQuadBox(300.0f, 300.0f, 300.0f, 7, m_debugVertexData, m_debugIndexData);
+
+    // m_debugVertexData.resize(8*6);
+    // m_debugIndexData.resize(36*6);
+
     m_faceTrees = geoInfo->faceTrees;
 
 	const auto vertexData = std::vector<VertexPosition>(geoInfo->vertices);
@@ -800,6 +851,42 @@ void Game::CreateDeviceDependentResources()
         m_indexBufferView.SizeInBytes = indexBufferSize;
     }
 
+    // Create vertex buffer (debug)
+    {
+        ResourceUploadBatch resourceUpload(device);
+        resourceUpload.Begin();
+
+        DX::ThrowIfFailed(
+            CreateStaticBuffer(device, resourceUpload, m_debugVertexData, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, &m_debugVB)
+        );
+
+        auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
+        uploadResourcesFinished.wait();
+
+        // Initialize the vertex buffer view.
+        m_debugVBV.BufferLocation = m_debugVB->GetGPUVirtualAddress();
+        m_debugVBV.StrideInBytes = sizeof(VertexPosition);
+        m_debugVBV.SizeInBytes = static_cast<UINT>(sizeof(VertexPosition) * m_debugVertexData.size());
+    }
+
+    // Create index buffer (debug)
+    {
+        ResourceUploadBatch resourceUpload(device);
+        resourceUpload.Begin();
+
+        DX::ThrowIfFailed(
+            CreateStaticBuffer(device, resourceUpload, m_debugIndexData, D3D12_RESOURCE_STATE_INDEX_BUFFER, &m_debugIB)
+        );
+
+        auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
+        uploadResourcesFinished.wait();
+
+        // Initialize the vertex buffer view.
+        m_debugIBV.BufferLocation = m_debugIB->GetGPUVirtualAddress();
+        m_debugIBV.Format = DXGI_FORMAT_R32_UINT;
+        m_debugIBV.SizeInBytes = static_cast<UINT>(sizeof(uint32_t) * m_debugIndexData.size());
+    }
+
     // Wait until assets have been uploaded to the GPU.
     m_deviceResources->WaitForGpu();
 
@@ -835,6 +922,7 @@ void Game::CreateWindowSizeDependentResources()
         XM_PIDIV4, float(size.right) / float(size.bottom), 0.01f, 1000.0f);
 
     // Construct Frustum
+    m_boundingFrustum = BoundingFrustum(m_projectionMatrix);
     m_frustum.ConstructFrustum(1000.0f, m_viewMatrix, m_projectionMatrix);
 
     // The frame index will be reset to zero when the window size changes

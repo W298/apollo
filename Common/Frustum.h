@@ -10,16 +10,6 @@ public:
 
 	void ConstructFrustum(float screenDepth, const DirectX::XMMATRIX& viewMatrix, DirectX::XMMATRIX projectionMatrix)
 	{
-        XMFLOAT4X4 pMatrix;
-        XMStoreFloat4x4(&pMatrix, projectionMatrix);
-
-        float zMinimum = -pMatrix._43 / pMatrix._33;
-        float r = screenDepth / (screenDepth - zMinimum);
-
-        pMatrix._33 = r;
-        pMatrix._43 = -r * zMinimum;
-        projectionMatrix = XMLoadFloat4x4(&pMatrix);
-
         XMMATRIX finalMatrix = XMMatrixMultiply(viewMatrix, projectionMatrix);
 
         XMFLOAT4X4 matrix;
@@ -131,41 +121,6 @@ public:
 
         return true;
 	}
-
-	bool CheckRectangle(float xCenter, float yCenter, float zCenter, float xSize, float ySize, float zSize)
-	{
-        for (int i = 0; i < 6; i++)
-        {
-            if (XMVectorGetX(XMPlaneDotCoord(m_planes[i], XMVectorSet((xCenter - xSize), (yCenter - ySize), (zCenter - zSize), 1.0f))) >= 0.0f)
-                continue;
-
-            if (XMVectorGetX(XMPlaneDotCoord(m_planes[i], XMVectorSet((xCenter + xSize), (yCenter - ySize), (zCenter - zSize), 1.0f))) >= 0.0f)
-                continue;
-
-            if (XMVectorGetX(XMPlaneDotCoord(m_planes[i], XMVectorSet((xCenter - xSize), (yCenter + ySize), (zCenter - zSize), 1.0f))) >= 0.0f)
-                continue;
-
-            if (XMVectorGetX(XMPlaneDotCoord(m_planes[i], XMVectorSet((xCenter - xSize), (yCenter - ySize), (zCenter + zSize), 1.0f))) >= 0.0f)
-                continue;
-
-            if (XMVectorGetX(XMPlaneDotCoord(m_planes[i], XMVectorSet((xCenter + xSize), (yCenter + ySize), (zCenter - zSize), 1.0f))) >= 0.0f)
-                continue;
-
-            if (XMVectorGetX(XMPlaneDotCoord(m_planes[i], XMVectorSet((xCenter + xSize), (yCenter - ySize), (zCenter + zSize), 1.0f))) >= 0.0f)
-                continue;
-
-            if (XMVectorGetX(XMPlaneDotCoord(m_planes[i], XMVectorSet((xCenter - xSize), (yCenter + ySize), (zCenter + zSize), 1.0f))) >= 0.0f)
-                continue;
-
-            if (XMVectorGetX(XMPlaneDotCoord(m_planes[i], XMVectorSet((xCenter + xSize), (yCenter + ySize), (zCenter + zSize), 1.0f))) >= 0.0f)
-                continue;
-
-            return false;
-        }
-
-        return true;
-	}
-
 private:
 	DirectX::XMVECTOR m_planes[6];
 };

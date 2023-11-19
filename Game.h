@@ -123,12 +123,20 @@ private:
     Microsoft::WRL::ComPtr<ID3D12RootSignature>     m_rootSignature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_pipelineState;
     Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_shadowPSO;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_debugPSO;
 
     // VB and IB
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_vertexBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_indexBuffer;
     D3D12_VERTEX_BUFFER_VIEW                        m_vertexBufferView;
     D3D12_INDEX_BUFFER_VIEW                         m_indexBufferView;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource>          m_debugVB;
+    Microsoft::WRL::ComPtr<ID3D12Resource>          m_debugIB;
+    D3D12_VERTEX_BUFFER_VIEW                        m_debugVBV;
+    D3D12_INDEX_BUFFER_VIEW                         m_debugIBV;
+    std::vector<VertexPosition>						m_debugVertexData;
+    std::vector<uint32_t>						    m_debugIndexData;
 
     // CB
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_cbUploadHeap;
@@ -152,7 +160,7 @@ private:
     UINT											m_dsvDescSize;
 
     // Camera
-    float                                           m_camMoveSpeed = 60.0f;
+    float                                           m_camMoveSpeed = 30.0f;
 
     // Shadow
     std::unique_ptr<ShadowMap>  			        m_shadowMap;
@@ -161,6 +169,7 @@ private:
 
     // Frustum
     Frustum										    m_frustum;
+    BoundingFrustum								    m_boundingFrustum;
 
     // QuadTree instances
     std::vector<FaceTree*>                          m_faceTrees;
