@@ -94,7 +94,7 @@ void QuadNode::CalcCenter(
 	XMFLOAT3 corners[8];
 	m_obb.GetCorners(corners);
 
-	if (m_level != 3) return;
+	if (m_level != 1) return;
 
 	std::vector<uint32_t> ary = { 0, 1, 2, 2, 3, 0, 4, 0, 3, 3, 7, 4, 5, 4, 7, 7, 6, 5, 1, 5, 6, 6, 2, 1, 2, 6, 7, 7, 3, 2, 5, 1, 0, 0, 4, 5 };
 	for (int i = 0; i < ary.size(); i++)
@@ -117,7 +117,7 @@ void QuadNode::Render(
 	const ContainmentType result = frustum.Contains(m_obb);
 
 	// Do not cull in level 0, 1
-	if (result <= 0 && m_level >= 2)
+	if (result <= 0 && m_level >= 1)
 	{
 		culledQuadCount += m_indexCount / 4;
 		return;

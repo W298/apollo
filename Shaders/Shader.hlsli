@@ -83,7 +83,6 @@ static const float far = 150.0f;
 float CalcTessFactor(float3 p)
 {
     float d = distance(p, cb.cameraPosition.xyz);
-    d = floor(d / 10.0f) * 10.0f;
 
     float s = saturate((d - near) / (far - near));
     return pow(2.0f, -8 * pow(s, 0.5f) + 8);

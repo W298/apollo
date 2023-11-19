@@ -21,11 +21,14 @@ using Microsoft::WRL::ComPtr;
 
 Game::Game() noexcept(false)
 {
-    m_deviceResources = std::make_unique<DX::DeviceResources>(DXGI_FORMAT_B8G8R8A8_UNORM_SRGB);
-    // TODO: Provide parameters for swapchain format, depth/stencil format, and backbuffer count.
-    //   Add DX::DeviceResources::c_AllowTearing to opt-in to variable rate displays.
-    //   Add DX::DeviceResources::c_EnableHDR for HDR10 display.
-    //   Add DX::DeviceResources::c_ReverseDepth to optimize depth buffer clears for 0 instead of 1.
+    m_deviceResources = std::make_unique<DX::DeviceResources>(
+        DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,    // backBufferFormat (DXGI_FORMAT)
+        DXGI_FORMAT_D24_UNORM_S8_UINT,      // depthBufferFormat (DXGI_FORMAT)
+        3,                                  // backBufferCount (UINT)
+        D3D_FEATURE_LEVEL_11_0,             // minFeatureLevel (D3D_FEATURE_LEVEL)
+        0                                   // flags (unsigned int)
+    );
+
     m_deviceResources->RegisterDeviceNotify(this);
 }
 
@@ -144,6 +147,8 @@ void Game::Update(DX::StepTimer const& timer)
 
         // Do frustum culling
         {
+            PIXBeginEvent(PIX_COLOR_DEFAULT, L"Frustum Culling");
+
             // Update frustum
             BoundingFrustum bf;
             auto det = XMMatrixDeterminant(m_viewMatrix);
@@ -168,7 +173,9 @@ void Game::Update(DX::StepTimer const& timer)
 
             upload.Begin();
             {
-                m_renderIB = m_graphicsMemory->Allocate(m_renderIBSize);
+                // Allocate memory for dynamic index buffer
+                // Minimum is 1, because we can't allocate 0.
+                m_renderIB = m_graphicsMemory->Allocate(m_renderIBSize == 0 ? 1 : m_renderIBSize);
                 memcpy(m_renderIB.Memory(), m_renderIndexData.data(), m_renderIBSize);
 
                 upload.Upload(m_staticIB.Get(), m_renderIB);
@@ -181,13 +188,15 @@ void Game::Update(DX::StepTimer const& timer)
             OutputDebugStringW((
                 L"Quad Culled : " + std::to_wstring(totalCulledQuadCount) + 
                 L" / " + std::to_wstring(((float)totalCulledQuadCount / (m_staticIndexCount / 4.0f)) * 100) + 
-                L" % Removed!" + L"\n").c_str()
+                L" % Removed!  " + std::to_wstring(timer.GetFramesPerSecond()) + L"FPS" + L"\n").c_str()
             );
+
+            PIXEndEvent();
         }
     }
 
     // Light rotation update
-    // m_lightDirection = XMVector3TransformCoord(m_lightDirection, XMMatrixRotationY(elapsedTime / 12.0f));
+    m_lightDirection = XMVector3TransformCoord(m_lightDirection, XMMatrixRotationY(elapsedTime / 12.0f));
 
     // Update Shadow Transform
     {
@@ -258,7 +267,6 @@ void Game::Render()
 
     // Prepare the command list to render a new frame.
     m_deviceResources->Prepare();
-    Clear();
 
     const auto commandList = m_deviceResources->GetCommandList();
     PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
@@ -392,6 +400,7 @@ void Game::Render()
     PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"PASS 3 Debug");
 
     {
+        /*
         commandList->SetPipelineState(m_debugPSO.Get());
 
         commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -399,6 +408,7 @@ void Game::Render()
         commandList->IASetIndexBuffer(&m_debugIBV);
 
         commandList->DrawIndexedInstanced(m_debugIndexData.size(), 1, 0, 0, 0);
+        */
     }
 
     PIXEndEvent(commandList);

@@ -70,7 +70,7 @@ GeometryGenerator::GeometryInfo* GeometryGenerator::CreateQuadBox(float width, f
 
 		const auto root = new QuadNode(0, faceIndexCount, index, f * faceIndexCount, width);
 		root->CalcCenter(meshData.vertices, debugVertexData, debugIndexData);
-		root->CreateChildren(std::min(numSubdivisions, 5u), meshData.vertices, meshData.indices, debugVertexData, debugIndexData);
+		root->CreateChildren(std::min(numSubdivisions, 4u), meshData.vertices, meshData.indices, debugVertexData, debugIndexData);
 
 		faceTrees.push_back(new FaceTree(root, faceIndexCount));
 	}
