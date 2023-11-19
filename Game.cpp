@@ -154,7 +154,7 @@ void Game::Update(DX::StepTimer const& timer)
             m_scrollWheelValue = static_cast<float>(mouse.scrollWheelValue);
         }
 
-        if (timer.GetTotalTicks() % 2 == 0)
+        if (true)
         {
             BoundingFrustum bf;
             auto det = XMMatrixDeterminant(m_viewMatrix);
@@ -734,7 +734,7 @@ void Game::CreateDeviceDependentResources()
         psoDesc.DS = { domainShaderBlob.data(), domainShaderBlob.size() };
         psoDesc.PS = { pixelShaderBlob.data(), pixelShaderBlob.size() };
         psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
-        psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+    	psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
         psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
     	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
     	psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
@@ -782,7 +782,7 @@ void Game::CreateDeviceDependentResources()
         debugPSODesc.VS = { debugVSBlob.data(), debugVSBlob.size() };
         debugPSODesc.PS = { debugPSBlob.data(), debugPSBlob.size() };
         debugPSODesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
-        debugPSODesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+        debugPSODesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
         debugPSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
         debugPSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
         debugPSODesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;

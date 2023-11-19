@@ -61,11 +61,13 @@ public:
 		auto center = DirectX::XMVectorSet(0, 0, 0, 0);
 		for (const uint32_t& i : m_cornerIndex)
 		{
-			center += center + XMLoadFloat3(&vertices[i].position);
+			center += XMLoadFloat3(&vertices[i].position);
 		}
 		center /= 4.0f;
 
-		center = XMVector3Normalize(center) * (150.0f - m_width);
+		float h = 150.0f * sin(acos(0.5f * m_width / 150.0f));
+
+		center = XMVector3Normalize(center) * (h);
 		XMStoreFloat3(&m_centerPosition, center);
 
 		auto n = SimpleMath::Vector3(XMVector3Normalize(center));
@@ -86,13 +88,13 @@ public:
 
 		m_obb = BoundingOrientedBox(
 			centerf4,
-			XMFLOAT3(m_width * 1.5f, m_width * 1.5f, 1),
+			XMFLOAT3(m_width * 0.5f, m_width * 0.5f, 0.1f),
 			qv);
 
 		XMFLOAT3 corners[8];
 		m_obb.GetCorners(corners);
 
-		if (m_level != 5) return;
+		if (m_level != 3) return;
 
 		std::vector<uint32_t> tary = { 0, 1, 2, 2, 3, 0, 4, 0, 3, 3, 7, 4, 5, 4, 7, 7, 6, 5, 1, 5, 6, 6, 2, 1, 2, 6, 7, 7, 3, 2, 5, 1, 0, 0, 4, 5 };
 		for (int i = 0; i < tary.size(); i++)
@@ -111,7 +113,7 @@ public:
 	void Render(IN BoundingFrustum& frustum, IN const std::vector<uint32_t>& indices, OUT std::vector<uint32_t>& retVec, OUT uint32_t& culledQuadCount) const
 	{
 		const ContainmentType result = frustum.Contains(m_obb);
-		if (result <= 0 && m_level >= 4)
+		if (result <= 0 && m_level >= 2)
 		{
 			culledQuadCount += m_indexCount / 4;
 			return;
