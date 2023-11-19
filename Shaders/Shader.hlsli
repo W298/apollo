@@ -354,7 +354,5 @@ PS_OUTPUT PS(DS_OUT input)
 	final.a = 1;
     output.color = final;
 
-    // output.color = float4(0.2f, 0.2, 0.2f, 1);
-
     return output;
 }

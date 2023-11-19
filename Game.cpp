@@ -80,18 +80,6 @@ void Game::Tick()
     Render();
 }
 
-void Game::CommitQuadNode()
-{
-    UINT8* pBegin;
-    const auto range = CD3DX12_RANGE(0, 0);
-    DX::ThrowIfFailed(m_indexBuffer->Map(0, &range, reinterpret_cast<void**>(&pBegin)));
-    ZeroMemory(pBegin, sizeof(uint32_t) * m_masterIndexCount);
-    memcpy(pBegin, m_renderIndices.data(), sizeof(uint32_t) * m_renderIndices.size());
-    m_indexBuffer->Unmap(0, nullptr);
-
-    m_renderIndexCount = m_renderIndices.size();
-}
-
 // Updates the world.
 void Game::Update(DX::StepTimer const& timer)
 {
@@ -154,23 +142,47 @@ void Game::Update(DX::StepTimer const& timer)
             m_scrollWheelValue = static_cast<float>(mouse.scrollWheelValue);
         }
 
-        if (true)
+        // Do frustum culling
         {
+            // Update frustum
             BoundingFrustum bf;
             auto det = XMMatrixDeterminant(m_viewMatrix);
             m_boundingFrustum.Transform(bf, XMMatrixInverse(&det, m_viewMatrix));
 
-            m_renderIndices.clear();
-            uint32_t totalCulledQuadCount = 0;
+            // Update render index data
+            m_renderIndexData.clear();
+
+        	uint32_t totalCulledQuadCount = 0;
             for (int i = 0; i < 6; i++)
             {
                 uint32_t culledQuadCount = 0;
-                m_faceTrees[i]->m_rootNode->Render(bf, m_masterIndices, OUT m_renderIndices, OUT culledQuadCount);
+                m_faceTrees[i]->GetRootNode()->Render(bf, m_staticIndexData, OUT m_renderIndexData, OUT culledQuadCount);
                 totalCulledQuadCount += culledQuadCount;
             }
-            CommitQuadNode();
 
-            OutputDebugStringW((L"Quad Culled : " + std::to_wstring(totalCulledQuadCount) + L" / " + std::to_wstring(((float)totalCulledQuadCount / (m_masterIndexCount / 4.0f)) * 100) + L" % Removed!" + L"\n").c_str());
+            m_renderIndexCount = m_renderIndexData.size();
+            m_renderIBSize = sizeof(uint32_t) * m_renderIndexCount;
+
+            // Update dynamic index buffer and upload to static index buffer.
+            ResourceUploadBatch upload(m_deviceResources->GetD3DDevice());
+
+            upload.Begin();
+            {
+                m_renderIB = m_graphicsMemory->Allocate(m_renderIBSize);
+                memcpy(m_renderIB.Memory(), m_renderIndexData.data(), m_renderIBSize);
+
+                upload.Upload(m_staticIB.Get(), m_renderIB);
+                upload.Transition(m_staticIB.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+            }
+            auto finish = upload.End(m_deviceResources->GetCommandQueue());
+            finish.wait();
+
+            // Check how many quads are culled
+            OutputDebugStringW((
+                L"Quad Culled : " + std::to_wstring(totalCulledQuadCount) + 
+                L" / " + std::to_wstring(((float)totalCulledQuadCount / (m_staticIndexCount / 4.0f)) * 100) + 
+                L" % Removed!" + L"\n").c_str()
+            );
         }
     }
 
@@ -271,52 +283,57 @@ void Game::Render()
     PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"PASS 1 Shadow Map");
 
     {
-        // Set the constant data for shadow map.
-        ShadowCB cbShadow;
+        // Update ShadowCB Data
+        {
+            ShadowCB cbShadow;
 
-        XMMATRIX lightWorld = XMLoadFloat4x4(&IDENTITY_MATRIX);
-        XMMATRIX lightView = XMLoadFloat4x4(&m_lightView);
-        XMMATRIX lightProj = XMLoadFloat4x4(&m_lightProj);
+            const XMMATRIX lightWorld = XMLoadFloat4x4(&IDENTITY_MATRIX);
+            const XMMATRIX lightView = XMLoadFloat4x4(&m_lightView);
+            const XMMATRIX lightProj = XMLoadFloat4x4(&m_lightProj);
 
-        cbShadow.lightWorldMatrix = XMMatrixTranspose(lightWorld);
-        cbShadow.lightViewProjMatrix = XMMatrixTranspose(lightView * lightProj);
-        cbShadow.cameraPosition = m_camPosition;
+            cbShadow.lightWorldMatrix = XMMatrixTranspose(lightWorld);
+            cbShadow.lightViewProjMatrix = XMMatrixTranspose(lightView * lightProj);
+            cbShadow.cameraPosition = m_camPosition;
 
-        memcpy(&m_cbMappedDataShadow[cbIndex].constants, &cbShadow, sizeof(ShadowCB));
+            memcpy(&m_cbMappedDataShadow[cbIndex].constants, &cbShadow, sizeof(ShadowCB));
 
-        // Bind the constants to the shader.
-        const auto baseGpuAddress = m_cbGpuAddressShadow + sizeof(PaddedShadowCB) * cbIndex;
-        commandList->SetGraphicsRootConstantBufferView(2, baseGpuAddress);
+            // Bind the constants to the shader.
+            const auto baseGpuAddress = m_cbGpuAddressShadow + sizeof(PaddedShadowCB) * cbIndex;
+            commandList->SetGraphicsRootConstantBufferView(2, baseGpuAddress);
+        }
 
 	    const auto viewport = m_shadowMap->Viewport();
 	    const auto scissorRect = m_shadowMap->ScissorRect();
-
         commandList->RSSetViewports(1, &viewport);
         commandList->RSSetScissorRects(1, &scissorRect);
 
         // Change to DEPTH_WRITE.
         TransitionResource(commandList, m_shadowMap->Resource(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_DEPTH_WRITE);
 
-        // Clear the back buffer and depth buffer.
-        commandList->ClearDepthStencilView(
-            m_shadowMap->Dsv(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+        // ---> DEPTH_WRITE
+        {
+            // Clear the back buffer and depth buffer.
+            commandList->ClearDepthStencilView(
+                m_shadowMap->Dsv(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
-        // Set null render target because we are only going to draw to
-        // depth buffer. Setting a null render target will disable color writes.
-        // Note the active PSO also must specify a render target count of 0.
-	    const auto dsv = m_shadowMap->Dsv();
-        commandList->OMSetRenderTargets(0, nullptr, false, &dsv);
-        commandList->SetPipelineState(m_shadowPSO.Get());
+            // Set null render target because we are only going to draw to
+            // depth buffer. Setting a null render target will disable color writes.
+            // Note the active PSO also must specify a render target count of 0.
+            const auto dsv = m_shadowMap->Dsv();
+            commandList->OMSetRenderTargets(0, nullptr, false, &dsv);
+            commandList->SetPipelineState(m_shadowPSO.Get());
 
-        // Set necessary state.
-        commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
-        commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
-        commandList->IASetIndexBuffer(&m_indexBufferView);
+            // Set necessary state.
+            commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
+            commandList->IASetVertexBuffers(0, 1, &m_vbv);
+            commandList->IASetIndexBuffer(&m_ibv);
 
-        // Draw the sphere.
-        commandList->DrawIndexedInstanced(m_renderIndexCount, 1, 0, 0, 0);
+            // Draw the sphere.
+            commandList->DrawIndexedInstanced(m_renderIndexCount, 1, 0, 0, 0);
+        }
+        // ---> GENERIC_READ
 
-        // Change back to GENERIC_READ so we can read the texture in a shader.
+        // Change to GENERIC_READ, so we can read the texture in a shader.
         TransitionResource(commandList, m_shadowMap->Resource(), D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ);
     }
 
@@ -333,40 +350,48 @@ void Game::Render()
 
         commandList->SetPipelineState(m_pipelineState.Get());
 
-        OpaqueCB cbOpaque;
+        // Update OpaqueCB Data
+        {
+            OpaqueCB cbOpaque;
 
-        XMMATRIX shadowTransform = XMLoadFloat4x4(&m_shadowTransform);
-        cbOpaque.shadowTransform = XMMatrixTranspose(shadowTransform);
+            const XMMATRIX shadowTransform = XMLoadFloat4x4(&m_shadowTransform);
+            cbOpaque.shadowTransform = XMMatrixTranspose(shadowTransform);
 
-        // Set the constant data for opaque pass.
-        cbOpaque.worldMatrix = XMMatrixTranspose(m_worldMatrix);
-        cbOpaque.viewProjMatrix = XMMatrixTranspose(m_viewMatrix * m_projectionMatrix);
+            // Set the constant data for opaque pass.
+            cbOpaque.worldMatrix = XMMatrixTranspose(m_worldMatrix);
+            cbOpaque.viewProjMatrix = XMMatrixTranspose(m_viewMatrix * m_projectionMatrix);
 
-        XMStoreFloat4(&cbOpaque.cameraPosition, m_camPosition);
-        XMStoreFloat4(&cbOpaque.lightDirection, m_lightDirection);
+            XMStoreFloat4(&cbOpaque.cameraPosition, m_camPosition);
+            XMStoreFloat4(&cbOpaque.lightDirection, m_lightDirection);
 
-        cbOpaque.lightColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-        cbOpaque.shadowBias = m_shadowBias;
+            cbOpaque.lightColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+            cbOpaque.shadowBias = m_shadowBias;
 
-        memcpy(&m_cbMappedData[cbIndex].constants, &cbOpaque, sizeof(OpaqueCB));
+            memcpy(&m_cbMappedData[cbIndex].constants, &cbOpaque, sizeof(OpaqueCB));
 
-        // Bind the constants to the shader.
-        const auto baseGpuAddress = m_cbGpuAddress + sizeof(PaddedOpaqueCB) * cbIndex;
-        commandList->SetGraphicsRootConstantBufferView(1, baseGpuAddress);
+            // Bind the constants to the shader.
+            const auto baseGpuAddress = m_cbGpuAddress + sizeof(PaddedOpaqueCB) * cbIndex;
+            commandList->SetGraphicsRootConstantBufferView(1, baseGpuAddress);
+        }
 
-        // Set necessary state.
+        // Set Topology and VB / IB
         commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
-        commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
-        commandList->IASetIndexBuffer(&m_indexBufferView);
+        commandList->IASetVertexBuffers(0, 1, &m_vbv);
+        commandList->IASetIndexBuffer(&m_ibv);
 
         // Draw the sphere.
         commandList->DrawIndexedInstanced(m_renderIndexCount, 1, 0, 0, 0);
+    }
 
+    PIXEndEvent(commandList);
 
+    //--------------------------------------------------------------------------------------
+    // PASS 3 - Debug
+    //--------------------------------------------------------------------------------------
 
+    PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"PASS 3 Debug");
 
-
-
+    {
         commandList->SetPipelineState(m_debugPSO.Get());
 
         commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -384,6 +409,7 @@ void Game::Render()
     PIXBeginEvent(m_deviceResources->GetCommandQueue(), PIX_COLOR_DEFAULT, L"Present");
 
 	m_deviceResources->Present();
+    m_graphicsMemory->Commit(m_deviceResources->GetCommandQueue());
 
     // GPU will signal an increasing value each frame
     m_deviceResources->GetCommandQueue()->Signal(m_fence.Get(), frameIdx);
@@ -394,7 +420,7 @@ void Game::Render()
 // Helper method to clear the back buffers.
 void Game::Clear()
 {
-    auto commandList = m_deviceResources->GetCommandList();
+	const auto commandList = m_deviceResources->GetCommandList();
     PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Clear");
 
     // Clear the views.
@@ -485,6 +511,9 @@ void Game::CreateDeviceDependentResources()
 #endif
         throw std::runtime_error("Shader Model 6.0 is not supported!");
     }
+
+    // Initialize Graphic Memory Instance
+    m_graphicsMemory = std::make_unique<GraphicsMemory>(device);
 
     // Initialize Shadow Map Instance
     m_shadowMap = std::make_unique<ShadowMap>(m_deviceResources->GetD3DDevice(), 8192, 8192);
@@ -800,55 +829,53 @@ void Game::CreateDeviceDependentResources()
     // Compute sphere vertices and indices
     auto geoInfo = GeometryGenerator::CreateQuadBox(300.0f, 300.0f, 300.0f, 7, m_debugVertexData, m_debugIndexData);
 
-    // m_debugVertexData.resize(8*6);
-    // m_debugIndexData.resize(36*6);
-
     m_faceTrees = geoInfo->faceTrees;
 
-	const auto vertexData = std::vector<VertexPosition>(geoInfo->vertices);
-    m_masterIndices = std::vector<uint32_t>(geoInfo->indices);
-    m_masterIndexCount = m_masterIndices.size();
+	const auto maxVertexData = std::vector<VertexPosition>(geoInfo->vertices);
+    m_staticIndexData = std::vector<uint32_t>(geoInfo->indices);
+    m_staticIndexCount = m_staticIndexData.size();
 
     delete geoInfo;
 
-    const UINT vertexBufferSize = static_cast<UINT>(sizeof(VertexPosition) * vertexData.size());
-    const UINT indexBufferSize = static_cast <UINT>(sizeof(uint32_t) * m_masterIndexCount);
+    m_staticVBSize = sizeof(VertexPosition) * maxVertexData.size();
+    m_staticIBSize = sizeof(uint32_t) * m_staticIndexCount;
 
-    // Create vertex buffer
+    // Create static vertex buffer and VBV
     {
         ResourceUploadBatch resourceUpload(device);
         resourceUpload.Begin();
 
         DX::ThrowIfFailed(
-            CreateStaticBuffer(device, resourceUpload, vertexData, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, &m_vertexBuffer)
+            CreateStaticBuffer(device, resourceUpload, maxVertexData, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, &m_staticVB)
         );
 
         auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
         uploadResourcesFinished.wait();
 
         // Initialize the vertex buffer view.
-        m_vertexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
-        m_vertexBufferView.StrideInBytes = sizeof(VertexPosition);
-        m_vertexBufferView.SizeInBytes = vertexBufferSize;
+        m_vbv.BufferLocation = m_staticVB->GetGPUVirtualAddress();
+        m_vbv.StrideInBytes = sizeof(VertexPosition);
+        m_vbv.SizeInBytes = m_staticVBSize;
     }
 
-    // Create index buffer
+    // Create static index buffer and IBV
     {
-        const D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-        const CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize);
+        CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_DEFAULT);
+        auto desc = CD3DX12_RESOURCE_DESC::Buffer(m_staticIBSize);
 
-        DX::ThrowIfFailed(
-            device->CreateCommittedResource(&heapProps,
-                D3D12_HEAP_FLAG_NONE,
-                &resDesc,
-                D3D12_RESOURCE_STATE_GENERIC_READ,
-                nullptr,
-                IID_PPV_ARGS(m_indexBuffer.ReleaseAndGetAddressOf())));
+    	DX::ThrowIfFailed(device->CreateCommittedResource(
+            &heapProperties,
+            D3D12_HEAP_FLAG_NONE,
+            &desc,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            nullptr,
+            IID_PPV_ARGS(m_staticIB.GetAddressOf())
+        ));
 
         // Initialize the index buffer view.
-        m_indexBufferView.BufferLocation = m_indexBuffer->GetGPUVirtualAddress();
-        m_indexBufferView.Format = DXGI_FORMAT_R32_UINT;
-        m_indexBufferView.SizeInBytes = indexBufferSize;
+        m_ibv.BufferLocation = m_staticIB->GetGPUVirtualAddress();
+        m_ibv.Format = DXGI_FORMAT_R32_UINT;
+        m_ibv.SizeInBytes = m_staticIBSize;
     }
 
     // Create vertex buffer (debug)
@@ -923,7 +950,6 @@ void Game::CreateWindowSizeDependentResources()
 
     // Construct Frustum
     m_boundingFrustum = BoundingFrustum(m_projectionMatrix);
-    m_frustum.ConstructFrustum(1000.0f, m_viewMatrix, m_projectionMatrix);
 
     // The frame index will be reset to zero when the window size changes
     // So we need to tell the GPU to signal our fence starting with zero
@@ -937,8 +963,13 @@ void Game::OnDeviceLost()
     m_pipelineState.Reset();
     m_shadowPSO.Reset();
 
-	m_vertexBuffer.Reset();
-    m_indexBuffer.Reset();
+	m_staticVB.Reset();
+    m_staticIB.Reset();
+
+    m_renderIB.Reset();
+
+    m_debugVB.Reset();
+    m_debugIB.Reset();
 
     m_cbUploadHeap.Reset();
     m_cbMappedData = nullptr;
@@ -956,8 +987,8 @@ void Game::OnDeviceLost()
 
     for (const FaceTree* faceTree : m_faceTrees)
         delete faceTree;
-    m_masterIndices.clear();
-    m_renderIndices.clear();
+
+    m_graphicsMemory.reset();
 
     m_fence.Reset();
 }

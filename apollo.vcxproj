@@ -201,7 +201,6 @@
   <ItemGroup>
     <ClInclude Include="Common\d3dx12.h" />
     <ClInclude Include="Common\DeviceResources.h" />
-    <ClInclude Include="Common\Frustum.h" />
     <ClInclude Include="Common\GeometryGenerator.h" />
     <ClInclude Include="Common\FaceTree.h" />
     <ClInclude Include="Common\ReadData.h" />
@@ -211,6 +210,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Common\DeviceResources.cpp" />
+    <ClCompile Include="Common\FaceTree.cpp" />
     <ClCompile Include="Common\GeometryGenerator.cpp" />
     <ClCompile Include="Game.cpp" />
     <ClCompile Include="Main.cpp" />

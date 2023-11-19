@@ -5,10 +5,10 @@
 #pragma once
 
 #include <DirectXCollision.h>
+#include <GraphicsMemory.h>
 
 #include "DeviceResources.h"
 #include "FaceTree.h"
-#include "Frustum.h"
 #include "Keyboard.h"
 #include "Mouse.h"
 #include "ShadowMap.h"
@@ -125,17 +125,31 @@ private:
     Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_shadowPSO;
     Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_debugPSO;
 
-    // VB and IB
-    Microsoft::WRL::ComPtr<ID3D12Resource>          m_vertexBuffer;
-    Microsoft::WRL::ComPtr<ID3D12Resource>          m_indexBuffer;
-    D3D12_VERTEX_BUFFER_VIEW                        m_vertexBufferView;
-    D3D12_INDEX_BUFFER_VIEW                         m_indexBufferView;
+    // Static VB / IB and Data
+    Microsoft::WRL::ComPtr<ID3D12Resource>          m_staticVB;
+    Microsoft::WRL::ComPtr<ID3D12Resource>          m_staticIB;
+    D3D12_VERTEX_BUFFER_VIEW                        m_vbv;
+    D3D12_INDEX_BUFFER_VIEW                         m_ibv;
 
+    std::vector<uint32_t>							m_staticIndexData;
+    uint32_t										m_staticIndexCount = 0;
+
+    size_t											m_staticVBSize = 0;
+	size_t											m_staticIBSize = 0;
+
+    // Dynamic IB and Data
+    DirectX::SharedGraphicsResource                 m_renderIB;
+
+    std::vector<uint32_t>  				            m_renderIndexData;
+    uint32_t										m_renderIndexCount = 0;
+    size_t											m_renderIBSize = 0;
+
+    // VB and IB for Debug
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_debugVB;
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_debugIB;
     D3D12_VERTEX_BUFFER_VIEW                        m_debugVBV;
     D3D12_INDEX_BUFFER_VIEW                         m_debugIBV;
-    std::vector<VertexPosition>						m_debugVertexData;
+    std::vector<DirectX::VertexPosition>			m_debugVertexData;
     std::vector<uint32_t>						    m_debugIndexData;
 
     // CB
@@ -168,16 +182,13 @@ private:
     float										    m_shadowBias = 0.003f;
 
     // Frustum
-    Frustum										    m_frustum;
-    BoundingFrustum								    m_boundingFrustum;
+    DirectX::BoundingFrustum						m_boundingFrustum;
 
     // QuadTree instances
     std::vector<FaceTree*>                          m_faceTrees;
 
-    std::vector<uint32_t>							m_masterIndices;
-    uint32_t										m_masterIndexCount = 0;
-    std::vector<uint32_t>  				            m_renderIndices;
-    uint32_t										m_renderIndexCount = 0;
+    // Graphics Memory
+    std::unique_ptr<DirectX::GraphicsMemory>        m_graphicsMemory;
 
     // A synchronization fence and an event. These members will be used
     // to synchronize the CPU with the GPU so that there will be no

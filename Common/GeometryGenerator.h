@@ -32,8 +32,11 @@ public:
 		}
 	};
 
-	static GeometryInfo* CreateQuadBox(float width, float height, float depth, std::uint32_t numSubdivisions, std::vector<VertexPosition>& debugVertexData, std
-	                                   ::vector<uint32_t>& debugIndexData);
+	static GeometryInfo* CreateQuadBox(
+		float width, float height, float depth, 
+		std::uint32_t numSubdivisions, 
+		std::vector<DirectX::VertexPosition>& debugVertexData, 
+		std::vector<uint32_t>& debugIndexData);
 private:
 	static void SubdivideQuad(MeshData& meshData);
 	static DirectX::VertexPosition MidPoint(const DirectX::VertexPosition& v0, const DirectX::VertexPosition& v1);
