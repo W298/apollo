@@ -154,34 +154,35 @@ void Game::Update(DX::StepTimer const& timer)
             auto det = XMMatrixDeterminant(m_viewMatrix);
             m_boundingFrustum.Transform(bf, XMMatrixInverse(&det, m_viewMatrix));
 
-            // Update render index data
-            m_renderIndexData.clear();
+            auto device = m_deviceResources->GetD3DDevice();
+            auto cq = m_deviceResources->GetCommandQueue();
 
         	uint32_t totalCulledQuadCount = 0;
             for (int i = 0; i < 6; i++)
             {
-                uint32_t culledQuadCount = 0;
-                m_faceTrees[i]->GetRootNode()->Render(bf, m_staticIndexData, OUT m_renderIndexData, OUT culledQuadCount);
+                uint32_t culledQuadCount = m_faceTrees[i]->UpdateIndexData(bf, m_staticIndexData);
                 totalCulledQuadCount += culledQuadCount;
             }
 
-            m_renderIndexCount = m_renderIndexData.size();
-            m_renderIBSize = sizeof(uint32_t) * m_renderIndexCount;
-
             // Update dynamic index buffer and upload to static index buffer.
-            ResourceUploadBatch upload(m_deviceResources->GetD3DDevice());
+            DirectX::ResourceUploadBatch upload(device);
 
             upload.Begin();
             {
-                // Allocate memory for dynamic index buffer
-                // Minimum is 1, because we can't allocate 0.
-                m_renderIB = m_graphicsMemory->Allocate(m_renderIBSize == 0 ? 1 : m_renderIBSize);
-                memcpy(m_renderIB.Memory(), m_renderIndexData.data(), m_renderIBSize);
+                for (FaceTree* faceTree : m_faceTrees)
+                {
+                    faceTree->m_renderIB[0] = m_graphicsMemory->Allocate(std::max(1u, faceTree->m_renderIBSize[0]));
+                    memcpy(faceTree->m_renderIB[0].Memory(), faceTree->m_renderIndexData[0].data(), faceTree->m_renderIBSize[0]);
+                    upload.Upload(faceTree->m_staticIB[0].Get(), faceTree->m_renderIB[0]);
+                    upload.Transition(faceTree->m_staticIB[0].Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
 
-                upload.Upload(m_staticIB.Get(), m_renderIB);
-                upload.Transition(m_staticIB.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+                    faceTree->m_renderIB[1] = m_graphicsMemory->Allocate(std::max(1u, faceTree->m_renderIBSize[1]));
+                    memcpy(faceTree->m_renderIB[1].Memory(), faceTree->m_renderIndexData[1].data(), faceTree->m_renderIBSize[1]);
+                    upload.Upload(faceTree->m_staticIB[1].Get(), faceTree->m_renderIB[1]);
+                    upload.Transition(faceTree->m_staticIB[1].Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+                }
             }
-            auto finish = upload.End(m_deviceResources->GetCommandQueue());
+            const auto finish = upload.End(cq);
             finish.wait();
 
             // Check how many quads are culled
@@ -334,10 +335,11 @@ void Game::Render()
             // Set necessary state.
             commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
             commandList->IASetVertexBuffers(0, 1, &m_vbv);
-            commandList->IASetIndexBuffer(&m_ibv);
 
-            // Draw the sphere.
-            commandList->DrawIndexedInstanced(m_renderIndexCount, 1, 0, 0, 0);
+            for (FaceTree* faceTree : m_faceTrees)
+            {
+                faceTree->Draw(commandList);
+            }
         }
         // ---> GENERIC_READ
 
@@ -385,10 +387,11 @@ void Game::Render()
         // Set Topology and VB / IB
         commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
         commandList->IASetVertexBuffers(0, 1, &m_vbv);
-        commandList->IASetIndexBuffer(&m_ibv);
 
-        // Draw the sphere.
-        commandList->DrawIndexedInstanced(m_renderIndexCount, 1, 0, 0, 0);
+        for (FaceTree* faceTree : m_faceTrees)
+        {
+            faceTree->Draw(commandList);
+        }
     }
 
     PIXEndEvent(commandList);
@@ -840,6 +843,10 @@ void Game::CreateDeviceDependentResources()
     auto geoInfo = GeometryGenerator::CreateQuadBox(300.0f, 300.0f, 300.0f, 7, m_debugVertexData, m_debugIndexData);
 
     m_faceTrees = geoInfo->faceTrees;
+    for (FaceTree* faceTree : m_faceTrees)
+    {
+        faceTree->Init(device);
+    }
 
 	const auto maxVertexData = std::vector<VertexPosition>(geoInfo->vertices);
     m_staticIndexData = std::vector<uint32_t>(geoInfo->indices);
@@ -975,8 +982,6 @@ void Game::OnDeviceLost()
 
 	m_staticVB.Reset();
     m_staticIB.Reset();
-
-    m_renderIB.Reset();
 
     m_debugVB.Reset();
     m_debugIB.Reset();

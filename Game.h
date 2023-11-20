@@ -137,13 +137,6 @@ private:
     size_t											m_staticVBSize = 0;
 	size_t											m_staticIBSize = 0;
 
-    // Dynamic IB and Data
-    DirectX::SharedGraphicsResource                 m_renderIB;
-
-    std::vector<uint32_t>  				            m_renderIndexData;
-    uint32_t										m_renderIndexCount = 0;
-    size_t											m_renderIBSize = 0;
-
     // VB and IB for Debug
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_debugVB;
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_debugIB;

@@ -138,3 +138,43 @@ void QuadNode::Render(
 	if (!anyChildVisible)
 		retVec.insert(retVec.end(), &indices[m_baseAddress], &indices[m_baseAddress] + m_indexCount);
 }
+
+void QuadNode::Render(
+	IN BoundingFrustum& frustum, IN const std::vector<uint32_t>& indices,
+	OUT std::vector<uint32_t>& retVec1, OUT std::vector<uint32_t>& retVec2, OUT uint32_t& culledQuadCount) const
+{
+	const ContainmentType result = frustum.Contains(m_obb);
+
+	// Do not cull in level 0, 1
+	if (result <= 0 && m_level >= 1)
+	{
+		culledQuadCount += m_indexCount / 4;
+		return;
+	}
+
+	// Try to render children
+	bool anyChildVisible = false;
+	for (int c = 0; c < 2; c++)
+	{
+		if (m_children[c] != nullptr)
+		{
+			anyChildVisible = true;
+			m_children[c]->Render(frustum, indices, retVec1, culledQuadCount);
+		}
+	}
+	for (int c = 2; c < 4; c++)
+	{
+		if (m_children[c] != nullptr)
+		{
+			anyChildVisible = true;
+			m_children[c]->Render(frustum, indices, retVec2, culledQuadCount);
+		}
+	}
+
+	// If no child is visible, render this node
+	if (!anyChildVisible)
+	{
+		retVec1.insert(retVec1.end(), &indices[m_baseAddress], &indices[m_baseAddress] + m_indexCount / 2);
+		retVec2.insert(retVec2.end(), &indices[m_baseAddress] + m_indexCount / 2, &indices[m_baseAddress] + m_indexCount);
+	}
+}
