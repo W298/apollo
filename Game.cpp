@@ -21,6 +21,23 @@ using Microsoft::WRL::ComPtr;
 
 Game::Game() noexcept(false)
 {
+    // Check Arguments
+    {
+        LPWSTR* szArglist;
+        int nArgs;
+
+        szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
+        if (szArglist == nullptr || nArgs < 1)
+        {
+            OutputDebugStringW(L"CommandLineToArgvW failed\n");
+            ExitGame();
+        }
+
+        m_subDivideCount = std::stoi(szArglist[1]);
+
+        LocalFree(szArglist);
+    }
+
     m_deviceResources = std::make_unique<DX::DeviceResources>(
         DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,    // backBufferFormat (DXGI_FORMAT)
         DXGI_FORMAT_D24_UNORM_S8_UINT,      // depthBufferFormat (DXGI_FORMAT)
@@ -840,7 +857,7 @@ void Game::CreateDeviceDependentResources()
     }
 
     // Compute sphere vertices and indices
-    auto geoInfo = GeometryGenerator::CreateQuadBox(300.0f, 300.0f, 300.0f, 7, m_debugVertexData, m_debugIndexData);
+    auto geoInfo = GeometryGenerator::CreateQuadBox(300.0f, 300.0f, 300.0f, m_subDivideCount, m_debugVertexData, m_debugIndexData);
 
     m_faceTrees = geoInfo->faceTrees;
     for (FaceTree* faceTree : m_faceTrees)

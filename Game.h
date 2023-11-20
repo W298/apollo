@@ -169,6 +169,9 @@ private:
     // Camera
     float                                           m_camMoveSpeed = 30.0f;
 
+    // QuadBox
+    UINT        			                        m_subDivideCount = 7;
+
     // Shadow
     std::unique_ptr<ShadowMap>  			        m_shadowMap;
     DirectX::BoundingSphere                         m_sceneBounds;

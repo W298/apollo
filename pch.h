@@ -71,6 +71,8 @@
 #include <dxgidebug.h>
 #endif
 
+#include "shellapi.h"
+
 // If using the DirectX Tool Kit for DX12, uncomment this line:
 // #include "GraphicsMemory.h"
 
@@ -152,8 +154,6 @@ inline void PIXEndEvent() {}
 template<typename T>
 inline void PIXEndEvent(T*) {}
 #else
-// To use graphics and CPU markup events with the latest version of PIX, change this to include <pix3.h>
-// then add the NuGet package WinPixEventRuntime to the project.
 #include <pix3.h>
 #endif
 
