@@ -171,9 +171,6 @@ void Game::Update(DX::StepTimer const& timer)
             auto det = XMMatrixDeterminant(m_viewMatrix);
             m_boundingFrustum.Transform(bf, XMMatrixInverse(&det, m_viewMatrix));
 
-            auto device = m_deviceResources->GetD3DDevice();
-            auto cq = m_deviceResources->GetCommandQueue();
-
         	uint32_t totalCulledQuadCount = 0;
             for (int i = 0; i < 6; i++)
             {
@@ -181,33 +178,12 @@ void Game::Update(DX::StepTimer const& timer)
                 totalCulledQuadCount += culledQuadCount;
             }
 
-            // Update dynamic index buffer and upload to static index buffer.
-            DirectX::ResourceUploadBatch upload(device);
-
-            upload.Begin();
-            {
-                for (FaceTree* faceTree : m_faceTrees)
-                {
-                    faceTree->m_renderIB[0] = m_graphicsMemory->Allocate(std::max(1u, faceTree->m_renderIBSize[0]));
-                    memcpy(faceTree->m_renderIB[0].Memory(), faceTree->m_renderIndexData[0].data(), faceTree->m_renderIBSize[0]);
-                    upload.Upload(faceTree->m_staticIB[0].Get(), faceTree->m_renderIB[0]);
-                    upload.Transition(faceTree->m_staticIB[0].Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
-
-                    faceTree->m_renderIB[1] = m_graphicsMemory->Allocate(std::max(1u, faceTree->m_renderIBSize[1]));
-                    memcpy(faceTree->m_renderIB[1].Memory(), faceTree->m_renderIndexData[1].data(), faceTree->m_renderIBSize[1]);
-                    upload.Upload(faceTree->m_staticIB[1].Get(), faceTree->m_renderIB[1]);
-                    upload.Transition(faceTree->m_staticIB[1].Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
-                }
-            }
-            const auto finish = upload.End(cq);
-            finish.wait();
-
             // Check how many quads are culled
-            OutputDebugStringW((
+            /*OutputDebugStringW((
                 L"Quad Culled : " + std::to_wstring(totalCulledQuadCount) + 
                 L" / " + std::to_wstring(((float)totalCulledQuadCount / (m_staticIndexCount / 4.0f)) * 100) + 
                 L" % Removed!  " + std::to_wstring(timer.GetFramesPerSecond()) + L"FPS" + L"\n").c_str()
-            );
+            );*/
 
             PIXEndEvent();
         }
@@ -275,6 +251,8 @@ void Game::Render()
     int numBackBuffers = m_deviceResources->GetBackBufferCount();
     uint64_t completedValue = m_fence->GetCompletedValue();
 
+    const auto commandList = m_deviceResources->GetCommandList();
+
     // if frame index is reset to zero it may temporarily be smaller than the last GPU signal
     if ((frameIdx > completedValue) && (frameIdx - completedValue > numBackBuffers))
     {
@@ -283,10 +261,20 @@ void Game::Render()
         WaitForSingleObjectEx(m_fenceEvent.Get(), INFINITE, FALSE);
     }
 
+    // Update dynamic index buffer and upload to static index buffer.
+    {
+        ResourceUploadBatch upload(m_deviceResources->GetD3DDevice());
+
+        upload.Begin();
+        for (FaceTree* faceTree : m_faceTrees)
+            faceTree->Upload(upload, m_graphicsMemory.get());
+        const auto finish = upload.End(m_deviceResources->GetCommandQueue());
+        finish.wait();
+    }
+
     // Prepare the command list to render a new frame.
     m_deviceResources->Prepare();
 
-    const auto commandList = m_deviceResources->GetCommandList();
     PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
 
     // Index into the available constant buffers based on the number
@@ -353,7 +341,7 @@ void Game::Render()
             commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
             commandList->IASetVertexBuffers(0, 1, &m_vbv);
 
-            for (FaceTree* faceTree : m_faceTrees)
+            for (const FaceTree* faceTree : m_faceTrees)
             {
                 faceTree->Draw(commandList);
             }
@@ -405,7 +393,7 @@ void Game::Render()
         commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
         commandList->IASetVertexBuffers(0, 1, &m_vbv);
 
-        for (FaceTree* faceTree : m_faceTrees)
+        for (const FaceTree* faceTree : m_faceTrees)
         {
             faceTree->Draw(commandList);
         }
