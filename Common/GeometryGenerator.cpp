@@ -3,28 +3,31 @@
 
 using namespace DirectX;
 
-GeometryGenerator::GeometryInfo* GeometryGenerator::CreateQuadBox(float width, float height, float depth, std::uint32_t numSubdivisions, std::vector<VertexPosition>& debugVertexData, std::vector<uint32_t>& debugIndexData)
+GeometryGenerator::GeometryInfo* GeometryGenerator::CreateQuadBox(
+	float width, float height, float depth, 
+	std::uint32_t numSubdivisions, 
+	std::vector<VertexPosition>& debugVertexData, std::vector<uint32_t>& debugIndexData)
 {
 	MeshData meshData;
 
 	// Create the vertices.
-	VertexPosition v[8];
+	VertexTess v[8];
 
 	const float w2 = 0.5f * width;
 	const float h2 = 0.5f * height;
 	const float d2 = 0.5f * depth;
 
 	// Fill in the front face vertex data.
-	v[0] = VertexPosition(XMFLOAT3(-w2, -h2, -d2));
-	v[1] = VertexPosition(XMFLOAT3(-w2, +h2, -d2));
-	v[2] = VertexPosition(XMFLOAT3(+w2, +h2, -d2));
-	v[3] = VertexPosition(XMFLOAT3(+w2, -h2, -d2));
+	v[0] = VertexTess(XMFLOAT3(-w2, -h2, -d2), XMFLOAT3(0, 0, 0));
+	v[1] = VertexTess(XMFLOAT3(-w2, +h2, -d2), XMFLOAT3(0, 0, 0));
+	v[2] = VertexTess(XMFLOAT3(+w2, +h2, -d2), XMFLOAT3(0, 0, 0));
+	v[3] = VertexTess(XMFLOAT3(+w2, -h2, -d2), XMFLOAT3(0, 0, 0));
 
 	// Fill in the back face vertex data.
-	v[4] = VertexPosition(XMFLOAT3(+w2, -h2, +d2));
-	v[5] = VertexPosition(XMFLOAT3(+w2, +h2, +d2));
-	v[6] = VertexPosition(XMFLOAT3(-w2, +h2, +d2));
-	v[7] = VertexPosition(XMFLOAT3(-w2, -h2, +d2));
+	v[4] = VertexTess(XMFLOAT3(+w2, -h2, +d2), XMFLOAT3(0, 0, 0));
+	v[5] = VertexTess(XMFLOAT3(+w2, +h2, +d2), XMFLOAT3(0, 0, 0));
+	v[6] = VertexTess(XMFLOAT3(-w2, +h2, +d2), XMFLOAT3(0, 0, 0));
+	v[7] = VertexTess(XMFLOAT3(-w2, -h2, +d2), XMFLOAT3(0, 0, 0));
 
 	meshData.vertices.assign(&v[0], &v[8]);
 
@@ -69,8 +72,12 @@ GeometryGenerator::GeometryInfo* GeometryGenerator::CreateQuadBox(float width, f
 		index[3] = i[3 + f * 4];
 
 		const auto root = new QuadNode(0, faceIndexCount, index, f * faceIndexCount, width);
-		root->CalcCenter(meshData.vertices, debugVertexData, debugIndexData);
-		root->CreateChildren(std::min(numSubdivisions, 4u), meshData.vertices, meshData.indices, debugVertexData, debugIndexData);
+		root->CalcCenter(meshData.vertices, meshData.indices, debugVertexData, debugIndexData);
+		root->CreateChildren(
+			std::min(numSubdivisions, QUAD_NODE_MAX_LEVEL), 
+			meshData.vertices, 
+			meshData.indices, 
+			debugVertexData, debugIndexData);
 
 		faceTrees.push_back(new FaceTree(root, faceIndexCount));
 	}
@@ -94,17 +101,17 @@ void GeometryGenerator::SubdivideQuad(MeshData& meshData)
 		const int v2i = inputCopy.indices[i*4+3];
 		const int v3i = inputCopy.indices[i*4+2];
 
-		VertexPosition v0 = inputCopy.vertices[v0i];
-		VertexPosition v1 = inputCopy.vertices[v1i];
-		VertexPosition v2 = inputCopy.vertices[v2i];
-		VertexPosition v3 = inputCopy.vertices[v3i];
+		VertexTess v0 = inputCopy.vertices[v0i];
+		VertexTess v1 = inputCopy.vertices[v1i];
+		VertexTess v2 = inputCopy.vertices[v2i];
+		VertexTess v3 = inputCopy.vertices[v3i];
 
 		// Generate the midpoints.
-		VertexPosition m0 = MidPoint(v0, v1);
-		VertexPosition m1 = MidPoint(v1, v2);
-		VertexPosition m2 = MidPoint(v2, v3);
-		VertexPosition m3 = MidPoint(v3, v0);
-		VertexPosition m4 = MidPoint(m0, m2);
+		VertexTess m0 = MidPoint(v0, v1);
+		VertexTess m1 = MidPoint(v1, v2);
+		VertexTess m2 = MidPoint(v2, v3);
+		VertexTess m3 = MidPoint(v3, v0);
+		VertexTess m4 = MidPoint(m0, m2);
 
 		// Add midpoints to vector.
 		const int m0i = static_cast<int>(meshData.vertices.size());
@@ -142,13 +149,13 @@ void GeometryGenerator::SubdivideQuad(MeshData& meshData)
 	}
 }
 
-VertexPosition GeometryGenerator::MidPoint(const VertexPosition& v0, const VertexPosition& v1)
+VertexTess GeometryGenerator::MidPoint(const VertexTess& v0, const VertexTess& v1)
 {
 	const XMVECTOR p0 = XMLoadFloat3(&v0.position);
 	const XMVECTOR p1 = XMLoadFloat3(&v1.position);
 	const XMVECTOR pos = 0.5f * (p0 + p1);
 
-	VertexPosition v;
+	VertexTess v;
     XMStoreFloat3(&v.position, pos);
 
     return v;

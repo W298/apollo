@@ -6,9 +6,11 @@
 //--------------------------------------------------------------------------------------
 struct ShadowCBType
 {
-    float4x4 worldMatrix;
-    float4x4 viewProjMatrix;
+    float4x4 lightWorldMatrix;
+    float4x4 lightViewProjMatrix;
     float4 cameraPosition;
+    float quadWidth;
+    uint unitCount;
 };
 
 ConstantBuffer<ShadowCBType> cb : register(b1);
@@ -19,12 +21,14 @@ ConstantBuffer<ShadowCBType> cb : register(b1);
 //--------------------------------------------------------------------------------------
 struct VS_INPUT
 {
-    float4 position : POSITION;
+    float3 position : POSITION;
+    nointerpolation float3 quadPos : QUAD;
 };
 
 struct VS_OUTPUT
 {
     float4 position : SV_Position;
+    nointerpolation float3 quadPos : QUAD;
 };
 
 struct PatchTess
@@ -48,7 +52,8 @@ struct DS_OUT
 // Texture & Sampler Variables
 //--------------------------------------------------------------------------------------
 Texture2D texMap[5] : register(t0);
-SamplerState samLinear : register(s0);
+SamplerState samAnisotropic : register(s0);
+
 
 //--------------------------------------------------------------------------------------
 // Vertex Shader
@@ -56,7 +61,8 @@ SamplerState samLinear : register(s0);
 VS_OUTPUT VS(VS_INPUT input)
 {
     VS_OUTPUT output;
-    output.position = input.position;
+    output.position = float4(input.position, 1.0f);
+    output.quadPos = input.quadPos;
 
     return output;
 }
@@ -68,38 +74,135 @@ VS_OUTPUT VS(VS_INPUT input)
 static const float near = 20.0f;
 static const float far = 150.0f;
 
-float CalcTessFactor(float3 p)
+// Calc tess factor based on distance between camera.
+// It will automatically convert to on sphere position.
+float CalcTessFactor(float3 planePos)
 {
-    float d = distance(p, cb.cameraPosition.xyz);
+    float3 spherePos = normalize(planePos) * 150.0f;
+    float d = distance(spherePos, cb.cameraPosition.xyz);
     float s = saturate((d - near) / (far - near));
-    return pow(2.0f, -8 * pow(s, 0.5f) + 8);
+
+    return pow(2.0f, (int) (-8 * pow(s, 0.25f) + 8));
 }
 
 PatchTess ConstantHS(InputPatch<VS_OUTPUT, 4> patch, int patchID : SV_PrimitiveID)
 {
     PatchTess output;
 
-    float3 localPos = 0.25f * (patch[0].position + patch[1].position + patch[2].position + patch[3].position);
-    float3 worldPos = mul(float4(localPos, 1.0f), cb.worldMatrix).xyz;
+    // Calc center position of patch and Get quad position on PLANE (face of cube).
+    float3 planeCenterPos = 0.25f * (patch[0].position + patch[1].position + patch[2].position + patch[3].position);
+    float3 planeQuadPos = patch[3].quadPos;
 
-    float3 p0 = normalize(patch[0].position) * 150.0f;
-    float3 p1 = normalize(patch[1].position) * 150.0f;
-    float3 p2 = normalize(patch[2].position) * 150.0f;
-    float3 p3 = normalize(patch[3].position) * 150.0f;
+    float tess = CalcTessFactor(planeQuadPos);
 
-    float3 e0 = 0.5f * (p0 + p2);
-    float3 e1 = 0.5f * (p0 + p1);
-    float3 e2 = 0.5f * (p1 + p3);
-    float3 e3 = 0.5f * (p2 + p3);
-    float3 c = normalize(worldPos) * 150.0f;
+    float width = cb.quadWidth;
+    uint unitCount = cb.unitCount;
+    float unitWidth = width / unitCount;
 
-    output.edgeTess[0] = CalcTessFactor(e0);
-    output.edgeTess[1] = CalcTessFactor(e1);
-    output.edgeTess[2] = CalcTessFactor(e2);
-    output.edgeTess[3] = CalcTessFactor(e3);
+    float3 right;
+    float3 up;
 
-    output.insideTess[0] = CalcTessFactor(c);
-    output.insideTess[1] = output.insideTess[0];
+    if (abs(planeQuadPos.z + 150.0f) <= 0.001f)
+    {
+        right = float3(1, 0, 0);
+        up = float3(0, 1, 0);
+    }
+    else if (abs(planeQuadPos.z - 150.0f) <= 0.001f)
+    {
+        right = float3(-1, 0, 0);
+        up = float3(0, 1, 0);
+    }
+    else if (abs(planeQuadPos.x + 150.0f) <= 0.001f)
+    {
+        right = float3(0, 0, -1);
+        up = float3(0, 1, 0);
+    }
+    else if (abs(planeQuadPos.x - 150.0f) <= 0.001f)
+    {
+        right = float3(0, 0, 1);
+        up = float3(0, 1, 0);
+    }
+    else if (abs(planeQuadPos.y + 150.0f) <= 0.001f)
+    {
+        right = float3(1, 0, 0);
+        up = float3(0, 0, -1);
+    }
+    else
+    {
+        right = float3(1, 0, 0);
+        up = float3(0, 0, 1);
+    }
+
+    // Check patch is on border or not.
+    // If not, use same tess factor.
+    if (distance(planeQuadPos * right, planeCenterPos * right) <= unitWidth * (unitCount / 2 - 1) &&
+        distance(planeQuadPos * up, planeCenterPos * up) <= unitWidth * (unitCount / 2 - 1))
+    {
+        output.edgeTess[0] = tess;
+        output.edgeTess[1] = tess;
+        output.edgeTess[2] = tess;
+        output.edgeTess[3] = tess;
+        output.insideTess[0] = tess;
+        output.insideTess[1] = tess;
+    }
+    else
+    {
+        // Check which border is on.
+        bool border[4] = { false, false, false, false };
+
+        if (dot(planeCenterPos, right) + unitWidth > dot(planeQuadPos, right) + width / 2)      // right?
+        {
+            border[3] = true;
+        }
+        else if (dot(planeCenterPos, right) - unitWidth < dot(planeQuadPos, right) - width / 2) // left?
+        {
+            border[1] = true;
+        }
+        if (dot(planeCenterPos, up) + unitWidth > dot(planeQuadPos, up) + width / 2)            // top?
+        {
+            border[2] = true;
+        }
+        else if (dot(planeCenterPos, up) - unitWidth < dot(planeQuadPos, up) - width / 2)       // bottom?
+        {
+            border[0] = true;
+        }
+
+        // Estimate tess factor of adjacent quad.
+        float estTess[4] =
+        {
+            CalcTessFactor(planeQuadPos - up * width),
+        	CalcTessFactor(planeQuadPos - right * width),
+        	CalcTessFactor(planeQuadPos + up * width),
+        	CalcTessFactor(planeQuadPos + right * width)
+        };
+
+        // Calc rotation of patch.
+        float x0 = dot(patch[0].position, right);
+        float y0 = dot(patch[0].position, up);
+        float x1 = dot(patch[1].position, right);
+        float y1 = dot(patch[1].position, up);
+        uint rotation = (x0 == x1) ? (y0 < y1 ? 0 : 2) : (x0 < x1 ? 1 : 3);
+
+        // Rotate border and estTess based on rotation factor.
+        bool borderTmp[4] = border;
+        float estTessTemp[4] = estTess;
+
+    	[unroll(4)]
+        for (int j = 0; j < 4; ++j)
+        {
+            border[j] = borderTmp[(j + rotation) % 4];
+            estTess[j] = estTessTemp[(j + rotation) % 4];
+        }
+
+        // Set tess factor.
+        [unroll(4)]
+        for (int i = 0; i < 4; i++)
+        {
+            output.edgeTess[i] = border[i] ? min(estTess[i], tess) : tess;
+        }
+        output.insideTess[0] = tess;
+        output.insideTess[1] = tess;
+    }
 
     return output;
 }
@@ -125,6 +228,13 @@ HS_OUT HS(InputPatch<VS_OUTPUT, 4> input, int vertexIdx : SV_OutputControlPointI
 //--------------------------------------------------------------------------------------
 // Domain Shader
 //--------------------------------------------------------------------------------------
+// Calc level (mipmap level) based on input tess factor.
+// Range is 0 ~ 6 (mipmap has 10 levels but use only 7).
+float CalcLevel(float tess)
+{
+    return max(0, 6 - (int) log2(tess));
+}
+
 [domain("quad")]
 DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, PatchTess patch)
 {
@@ -135,12 +245,30 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
     float3 v2 = lerp(input[2].position, input[3].position, uv.x);
     float3 position = lerp(v1, v2, uv.y);
 
-    // Get tessellation level.
-    float tess = patch.edgeTess[0];
+    uint level = CalcLevel(patch.insideTess[0]);
 
-    // Calculate LOD level for height map.
-    // range is 0 ~ 5 (mipmap has 10 levels but use only 6).
-    float level = max(0, 8 - sqrt(tess) - 3);
+    // If patch is on corner, use level 0.
+    // If patch is on border, use edge tess factor.
+    if ((uv.x == 0 && (uv.y == 0 || uv.y == 1)) || (uv.x == 1 && (uv.y == 0 || uv.y == 1)))
+    {
+        level = 0;
+    }
+    else if (uv.x == 0)
+    {
+        level = CalcLevel(patch.edgeTess[0]);
+    }
+    else if (uv.x == 1)
+    {
+        level = CalcLevel(patch.edgeTess[2]);
+    }
+    else if (uv.y == 0)
+    {
+        level = CalcLevel(patch.edgeTess[1]);
+    }
+    else if (uv.y == 1)
+    {
+        level = CalcLevel(patch.edgeTess[3]);
+    }
 
     // Get normalized cartesian position.
     float3 normCatPos = normalize(position);
@@ -155,14 +283,15 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
 
     // Divide texture coordinates into two parts and re-mapping.
     int texIndex = round(gTexCoord.x) + 2;
-    float2 sTexCoord = float2(texIndex == 0 ? gTexCoord.x * 2 : (gTexCoord.x - 0.5f) * 2.0f, gTexCoord.y);
+    float2 sTexCoord = float2(round(gTexCoord.x) == 0 ? saturate(gTexCoord.x * 2) : saturate((gTexCoord.x - 0.5f) * 2.0f), gTexCoord.y);
 
     // Get height from texture.
-    float height = texMap[texIndex].SampleLevel(samLinear, sTexCoord, level).r;
+    float height = texMap[texIndex].SampleLevel(samAnisotropic, sTexCoord, level).r;
+    float3 catPos = normCatPos * (150.0f + height * 0.5f);
 
     // Multiply MVP matrices.
-    output.position = mul(float4(normCatPos * (150.0f + height * 0.5f), 1.0f), cb.worldMatrix);
-    output.position = mul(output.position, cb.viewProjMatrix);
+    output.position = mul(float4(catPos, 1.0f), cb.lightWorldMatrix);
+    output.position = mul(output.position, cb.lightViewProjMatrix);
 
     return output;
 }

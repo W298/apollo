@@ -13,7 +13,6 @@
 #include "Mouse.h"
 #include "ShadowMap.h"
 #include "StepTimer.h"
-#include "VertexTypes.h"
 
 class Game final : public DX::IDeviceNotify
 {
@@ -53,13 +52,15 @@ public:
 private:
     struct OpaqueCB
     {
-        DirectX::XMMATRIX worldMatrix;
-        DirectX::XMMATRIX viewProjMatrix;
-        DirectX::XMFLOAT4 cameraPosition;
-        DirectX::XMFLOAT4 lightDirection;
-        DirectX::XMFLOAT4 lightColor;
-        DirectX::XMMATRIX shadowTransform;
-        float             shadowBias;
+        DirectX::XMMATRIX   worldMatrix;
+        DirectX::XMMATRIX   viewProjMatrix;
+        DirectX::XMFLOAT4   cameraPosition;
+        DirectX::XMFLOAT4   lightDirection;
+        DirectX::XMFLOAT4   lightColor;
+        DirectX::XMMATRIX   shadowTransform;
+        float               shadowBias;
+        float               quadWidth;
+        UINT			    unitCount;
     };
 
     union PaddedOpaqueCB
@@ -70,9 +71,11 @@ private:
 
     struct ShadowCB
     {
-        DirectX::XMMATRIX lightWorldMatrix;
-        DirectX::XMMATRIX lightViewProjMatrix;
-        DirectX::XMVECTOR cameraPosition;
+        DirectX::XMMATRIX   lightWorldMatrix;
+        DirectX::XMMATRIX   lightViewProjMatrix;
+        DirectX::XMVECTOR   cameraPosition;
+        float               quadWidth;
+        UINT			    unitCount;
     };
 
     union PaddedShadowCB
@@ -86,8 +89,6 @@ private:
         2 * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT, "PaddedOpaqueCB is not aligned properly");
     static_assert(sizeof(PaddedShadowCB) ==
         2 * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT, "PaddedShadowCB is not aligned properly");
-
-    void CommitQuadNode();
 
     void Update(DX::StepTimer const& timer);
     void Render();
@@ -167,7 +168,8 @@ private:
     UINT											m_dsvDescSize;
 
     // Camera
-    float                                           m_camMoveSpeed = 30.0f;
+    float                                           m_camMoveSpeed = 130.0f;
+    float										    m_camRotateSpeed = 0.5f;
 
     // QuadBox
     UINT        			                        m_subDivideCount = 7;
@@ -186,9 +188,7 @@ private:
     // Graphics Memory
     std::unique_ptr<DirectX::GraphicsMemory>        m_graphicsMemory;
 
-    // A synchronization fence and an event. These members will be used
-    // to synchronize the CPU with the GPU so that there will be no
-    // contention for the constant buffers. 
+    // Fence
     Microsoft::WRL::ComPtr<ID3D12Fence>             m_fence;
     Microsoft::WRL::Wrappers::Event                 m_fenceEvent;
 
@@ -222,4 +222,8 @@ private:
     DirectX::XMFLOAT3                               m_lightPosition;
     DirectX::XMFLOAT4X4                             m_lightView = IDENTITY_MATRIX;
     DirectX::XMFLOAT4X4                             m_lightProj = IDENTITY_MATRIX;
+
+    // Tessellation states
+    float										    m_quadWidth;
+    UINT										    m_unitCount;
 };

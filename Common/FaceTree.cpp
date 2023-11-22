@@ -1,140 +1,63 @@
 #include "pch.h"
 #include "FaceTree.h"
 
-using namespace DirectX;
+FaceTree::FaceTree(QuadNode* rootNode, UINT32 faceIndexCount) :
+	m_rootNode(rootNode),
+	m_faceIndexCount(faceIndexCount) {}
 
-QuadNode::QuadNode(char level, uint32_t indexCount, uint32_t index[4], uint32_t baseAddress, float width)
+FaceTree::~FaceTree()
 {
-	m_level = level;
-	m_indexCount = indexCount;
-	memcpy(m_cornerIndex, index, sizeof(uint32_t) * 4);
-	m_baseAddress = baseAddress;
-	m_width = width;
+	delete m_rootNode;
+	m_staticIB.Reset();
+	m_renderIB.Reset();
 }
 
-QuadNode::~QuadNode()
+void FaceTree::Init(ID3D12Device* device)
 {
-	for (const auto& c : m_children)
-		delete c;
+	m_staticIndexCount = m_rootNode->GetIndexCount();
+	m_staticIBSize = sizeof(uint32_t) * m_staticIndexCount;
+
+	CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_DEFAULT);
+	auto desc = CD3DX12_RESOURCE_DESC::Buffer(m_staticIBSize);
+
+	DX::ThrowIfFailed(device->CreateCommittedResource(
+		&heapProperties,
+		D3D12_HEAP_FLAG_NONE,
+		&desc,
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		nullptr,
+		IID_PPV_ARGS(m_staticIB.GetAddressOf())
+	));
+
+	// Initialize the index buffer view.
+	m_ibv.BufferLocation = m_staticIB->GetGPUVirtualAddress();
+	m_ibv.Format = DXGI_FORMAT_R32_UINT;
+	m_ibv.SizeInBytes = m_staticIBSize;
 }
 
-void QuadNode::CreateChildren(
-	const char limit,
-	const std::vector<VertexPosition>& vertices,
-	const std::vector<uint32_t>& indices, 
-	std::vector<VertexPosition>& debugVertexData, std::vector<uint32_t>& debugIndexData)
+uint32_t FaceTree::UpdateIndexData(IN DirectX::BoundingFrustum& frustum, IN const std::vector<uint32_t>& indices)
 {
-	if (m_level + 1 > limit)
-		return;
+	m_renderIndexData.clear();
 
-	for (int c = 0; c < 4; c++)
-	{
-		const uint32_t qic = m_indexCount / 4;
-		const uint32_t qqic = qic / 4;
+	uint32_t culledQuadCount = 0;
+	m_rootNode->Render(frustum, indices, m_renderIndexData, culledQuadCount);
 
-		uint32_t index[4];
-		index[0] = indices[0 * qqic + c * qic + m_baseAddress];
-		index[1] = indices[1 * qqic + c * qic + m_baseAddress];
-		index[2] = indices[2 * qqic + c * qic + m_baseAddress];
-		index[3] = indices[3 * qqic + c * qic + m_baseAddress];
+	m_renderIndexCount = m_renderIndexData.size();
+	m_renderIBSize = sizeof(uint32_t) * m_renderIndexCount;
 
-		const auto child = new QuadNode(m_level + 1, qic, index, c * qic + m_baseAddress, m_width / 2);
-		child->CalcCenter(vertices, debugVertexData, debugIndexData);
-		child->CreateChildren(limit, vertices, indices, debugVertexData, debugIndexData);
-
-		m_children[c] = child;
-	}
+	return culledQuadCount;
 }
 
-void QuadNode::CalcCenter(
-	const std::vector<VertexPosition>& vertices, 
-	std::vector<VertexPosition>& debugVertexData, std::vector<uint32_t>& debugIndexData)
+void FaceTree::Upload(DirectX::ResourceUploadBatch& upload, DirectX::GraphicsMemory* graphicsMemory)
 {
-	// Calculate center position with corner position
-	auto center = XMVectorSet(0, 0, 0, 0);
-	for (const uint32_t& i : m_cornerIndex)
-	{
-		center += XMLoadFloat3(&vertices[i].position);
-	}
-	center /= 4.0f;
-
-	// Calculate height fit with sphere
-	float h = 150.0f * sin(acos(0.5f * m_width / 150.0f));
-
-	// Manipulate center position
-	center = XMVector3Normalize(center) * (h);
-	XMStoreFloat3(&m_centerPosition, center);
-
-	// Calculate TBN
-	auto n = SimpleMath::Vector3(XMVector3Normalize(center));
-
-	const float theta = atan2(n.z, n.x);
-	auto t = SimpleMath::Vector3(-sin(theta), 0.0f, cos(theta));
-	t.Normalize();
-
-	auto b = n.Cross(t);
-	b.Normalize();
-
-	// Calculate quaternion
-	const auto q = SimpleMath::Quaternion::CreateFromRotationMatrix(
-		SimpleMath::Matrix(
-			SimpleMath::Vector4(t), SimpleMath::Vector4(b), 
-			SimpleMath::Vector4(n), SimpleMath::Vector4::Zero));
-
-	const auto quaternionVec = XMFLOAT4(q.x, q.y, q.z, q.w);
-
-	// Create OBB with little bigger size
-	m_obb = BoundingOrientedBox(
-		m_centerPosition,
-		XMFLOAT3(m_width * 0.6f, m_width * 0.6f, 0.1f),
-		quaternionVec);
-
-
-	// For Debug
-	XMFLOAT3 corners[8];
-	m_obb.GetCorners(corners);
-
-	if (m_level != 1) return;
-
-	std::vector<uint32_t> ary = { 0, 1, 2, 2, 3, 0, 4, 0, 3, 3, 7, 4, 5, 4, 7, 7, 6, 5, 1, 5, 6, 6, 2, 1, 2, 6, 7, 7, 3, 2, 5, 1, 0, 0, 4, 5 };
-	for (int i = 0; i < ary.size(); i++)
-	{
-		ary[i] += debugVertexData.size();
-	}
-
-	debugIndexData.insert(debugIndexData.end(), ary.begin(), ary.end());
-
-	for (XMFLOAT3 corner : corners)
-	{
-		debugVertexData.push_back(VertexPosition(corner));
-	}
+	m_renderIB = graphicsMemory->Allocate(std::max(1u, m_renderIBSize));
+	memcpy(m_renderIB.Memory(), m_renderIndexData.data(), m_renderIBSize);
+	upload.Upload(m_staticIB.Get(), m_renderIB);
+	upload.Transition(m_staticIB.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
 }
 
-void QuadNode::Render(
-	IN BoundingFrustum& frustum, IN const std::vector<uint32_t>& indices, 
-	OUT std::vector<uint32_t>& retVec, OUT uint32_t& culledQuadCount) const
+void FaceTree::Draw(ID3D12GraphicsCommandList* commandList) const
 {
-	const ContainmentType result = frustum.Contains(m_obb);
-
-	// Do not cull in level 0, 1
-	if (result <= 0 && m_level >= 1)
-	{
-		culledQuadCount += m_indexCount / 4;
-		return;
-	}
-
-	// Try to render children
-	bool anyChildVisible = false;
-	for (const auto c : m_children)
-	{
-		if (c != nullptr)
-		{
-			anyChildVisible = true;
-			c->Render(frustum, indices, retVec, culledQuadCount);
-		}
-	}
-
-	// If no child is visible, render this node
-	if (!anyChildVisible)
-		retVec.insert(retVec.end(), &indices[m_baseAddress], &indices[m_baseAddress] + m_indexCount);
+	commandList->IASetIndexBuffer(&m_ibv);
+	commandList->DrawIndexedInstanced(m_renderIndexCount, 1, 0, 0, 0);
 }

@@ -36,6 +36,9 @@
     <ClInclude Include="Common\FaceTree.h">
       <Filter>Common</Filter>
     </ClInclude>
+    <ClInclude Include="Common\QuadNode.h">
+      <Filter>Common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp" />
@@ -54,6 +57,9 @@
       <Filter>Common</Filter>
     </ClCompile>
     <ClCompile Include="Common\FaceTree.cpp">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="Common\QuadNode.cpp">
       <Filter>Common</Filter>
     </ClCompile>
   </ItemGroup>

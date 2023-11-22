@@ -33,7 +33,7 @@ Game::Game() noexcept(false)
             ExitGame();
         }
 
-        m_subDivideCount = std::stoi(szArglist[1]);
+        m_subDivideCount = std::max(TESS_GROUP_QUAD_LEVEL, static_cast<UINT>(std::stoi(szArglist[1])));
 
         LocalFree(szArglist);
     }
@@ -139,8 +139,8 @@ void Game::Update(DX::StepTimer const& timer)
             const float horizontalMove = (keyboard.A ? -1.0f : keyboard.D ? 1.0f : 0.0f) * elapsedTime * m_camMoveSpeed;
 
             // Handle mouse input.
-            m_camYaw += mouse.x * elapsedTime / 10.0f;
-            m_camPitch += mouse.y * elapsedTime / 10.0f;
+            m_camYaw += mouse.x * elapsedTime * m_camRotateSpeed;
+            m_camPitch += mouse.y * elapsedTime * m_camRotateSpeed;
 
             // Set view matrix based on camera position and orientation.
             m_camRotationMatrix = XMMatrixRotationRollPitchYaw(m_camPitch, m_camYaw, 0.0f);
@@ -184,6 +184,13 @@ void Game::Update(DX::StepTimer const& timer)
                 L" / " + std::to_wstring(((float)totalCulledQuadCount / (m_staticIndexCount / 4.0f)) * 100) + 
                 L" % Removed!  " + std::to_wstring(timer.GetFramesPerSecond()) + L"FPS" + L"\n").c_str()
             );*/
+
+            // Debug cam position
+            OutputDebugStringW(
+                (L"Cam Position : " + std::to_wstring(m_camPosition.m128_f32[0]) + 
+                    L", " + std::to_wstring(m_camPosition.m128_f32[1]) + L", " 
+                    + std::to_wstring(m_camPosition.m128_f32[2]) + L"\n").c_str()
+            );
 
             PIXEndEvent();
         }
@@ -309,6 +316,9 @@ void Game::Render()
             cbShadow.lightViewProjMatrix = XMMatrixTranspose(lightView * lightProj);
             cbShadow.cameraPosition = m_camPosition;
 
+            cbShadow.quadWidth = m_quadWidth;
+            cbShadow.unitCount = m_unitCount;
+
             memcpy(&m_cbMappedDataShadow[cbIndex].constants, &cbShadow, sizeof(ShadowCB));
 
             // Bind the constants to the shader.
@@ -369,18 +379,17 @@ void Game::Render()
         {
             OpaqueCB cbOpaque;
 
-            const XMMATRIX shadowTransform = XMLoadFloat4x4(&m_shadowTransform);
-            cbOpaque.shadowTransform = XMMatrixTranspose(shadowTransform);
-
-            // Set the constant data for opaque pass.
-            cbOpaque.worldMatrix = XMMatrixTranspose(m_worldMatrix);
+        	cbOpaque.worldMatrix = XMMatrixTranspose(m_worldMatrix);
             cbOpaque.viewProjMatrix = XMMatrixTranspose(m_viewMatrix * m_projectionMatrix);
-
             XMStoreFloat4(&cbOpaque.cameraPosition, m_camPosition);
             XMStoreFloat4(&cbOpaque.lightDirection, m_lightDirection);
+        	cbOpaque.lightColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 
-            cbOpaque.lightColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-            cbOpaque.shadowBias = m_shadowBias;
+            cbOpaque.shadowTransform = XMMatrixTranspose(XMLoadFloat4x4(&m_shadowTransform));
+        	cbOpaque.shadowBias = m_shadowBias;
+
+            cbOpaque.quadWidth = m_quadWidth;
+            cbOpaque.unitCount = m_unitCount;
 
             memcpy(&m_cbMappedData[cbIndex].constants, &cbOpaque, sizeof(OpaqueCB));
 
@@ -763,7 +772,8 @@ void Game::CreateDeviceDependentResources()
     {
         static constexpr D3D12_INPUT_ELEMENT_DESC s_inputElementDesc[] =
         {
-            { "POSITION",   0,  DXGI_FORMAT_R32G32B32_FLOAT,    0,  0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+            { "POSITION",   0,  DXGI_FORMAT_R32G32B32_FLOAT,    0,  0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "QUAD",       0,  DXGI_FORMAT_R32G32B32_FLOAT,    0,  12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         };
 
         // Load shaders
@@ -853,13 +863,13 @@ void Game::CreateDeviceDependentResources()
         faceTree->Init(device);
     }
 
-	const auto maxVertexData = std::vector<VertexPosition>(geoInfo->vertices);
+	const auto maxVertexData = std::vector<VertexTess>(geoInfo->vertices);
     m_staticIndexData = std::vector<uint32_t>(geoInfo->indices);
     m_staticIndexCount = m_staticIndexData.size();
 
     delete geoInfo;
 
-    m_staticVBSize = sizeof(VertexPosition) * maxVertexData.size();
+    m_staticVBSize = sizeof(VertexTess) * maxVertexData.size();
     m_staticIBSize = sizeof(uint32_t) * m_staticIndexCount;
 
     // Create static vertex buffer and VBV
@@ -876,7 +886,7 @@ void Game::CreateDeviceDependentResources()
 
         // Initialize the vertex buffer view.
         m_vbv.BufferLocation = m_staticVB->GetGPUVirtualAddress();
-        m_vbv.StrideInBytes = sizeof(VertexPosition);
+        m_vbv.StrideInBytes = sizeof(VertexTess);
         m_vbv.SizeInBytes = m_staticVBSize;
     }
 
@@ -960,6 +970,9 @@ void Game::CreateDeviceDependentResources()
 
 	m_scrollWheelValue = 0;
     m_lightDirection = XMVectorSet(-1.0f, 0.0f, 0.0f, 1.0f);
+
+    m_quadWidth = 300.0f / pow(2, TESS_GROUP_QUAD_LEVEL);
+    m_unitCount = pow(2, m_subDivideCount - TESS_GROUP_QUAD_LEVEL);
 }
 
 // Allocate all memory resources that change on a window SizeChanged event.
