@@ -64,7 +64,6 @@ struct PS_OUTPUT
 Texture2D texMap[5] : register(t0);
 SamplerState samAnisotropic : register(s0);
 SamplerComparisonState samShadow : register(s1);
-SamplerState samPoint : register(s2);
 
 
 //--------------------------------------------------------------------------------------
@@ -299,7 +298,7 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
 
     // Get height from texture.
     float height = texMap[texIndex].SampleLevel(samAnisotropic, sTexCoord, level).r;
-    float3 catPos = normCatPos * (150.0f + height * 0.5f);
+    float3 catPos = normCatPos * (150.0f + height * 0.4f);
 
     // Multiply MVP matrices.
     output.position = mul(float4(catPos, 1.0f), cb.worldMatrix);
@@ -447,8 +446,6 @@ PS_OUTPUT PS(DS_OUT input)
     float4 final = float4(saturate((diffuse * saturate(shadowFactor + shadowCorrector) + ambient) * texColor.rgb * lerp(0.95f, 1.0f, noise1) * lerp(0.92f, 1.0f, noise2) * lerp(0.98f, 1.0f, h)), texColor.a);
     final.a = 1;
     output.color = final;
-
-    // output.color = float4(1, 1, 1, 1);
 
     return output;
 }

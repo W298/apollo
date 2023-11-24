@@ -287,7 +287,7 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
 
     // Get height from texture.
     float height = texMap[texIndex].SampleLevel(samAnisotropic, sTexCoord, level).r;
-    float3 catPos = normCatPos * (150.0f + height * 0.5f);
+    float3 catPos = normCatPos * (150.0f + height * 0.4f);
 
     // Multiply MVP matrices.
     output.position = mul(float4(catPos, 1.0f), cb.lightWorldMatrix);
