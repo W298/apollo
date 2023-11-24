@@ -591,7 +591,21 @@ void Game::CreateDeviceDependentResources()
             D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK
         );
 
-        std::array<const CD3DX12_STATIC_SAMPLER_DESC, 2> staticSamplers = { anisotropicClamp, shadow };
+        const CD3DX12_STATIC_SAMPLER_DESC linearClamp(
+            2,                                                  // shaderRegister
+            D3D12_FILTER_MIN_MAG_MIP_LINEAR,                    // filter
+            D3D12_TEXTURE_ADDRESS_MODE_CLAMP,                   // addressU
+            D3D12_TEXTURE_ADDRESS_MODE_CLAMP,                   // addressV
+            D3D12_TEXTURE_ADDRESS_MODE_CLAMP,                   // addressW
+            0.0f,                                               // mipLODBias
+            16,                                                 // maxAnisotropy
+            D3D12_COMPARISON_FUNC_LESS_EQUAL,
+            D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE,
+            0.0f,                                               // minLOD
+            D3D12_FLOAT32_MAX                                   // maxLOD
+        );
+
+        std::array<const CD3DX12_STATIC_SAMPLER_DESC, 3> staticSamplers = { anisotropicClamp, shadow, linearClamp };
 
         D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
             D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
@@ -632,7 +646,7 @@ void Game::CreateDeviceDependentResources()
         ResourceUploadBatch resourceUpload(device);
         resourceUpload.Begin();
         DX::ThrowIfFailed(
-            CreateDDSTextureFromFile(device, resourceUpload, L"colormap_l.dds", m_colorLTexResource.ReleaseAndGetAddressOf()));
+            CreateDDSTextureFromFile(device, resourceUpload, L"Textures\\colormap_l.dds", m_colorLTexResource.ReleaseAndGetAddressOf()));
 
         auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
         uploadResourcesFinished.wait();
@@ -643,7 +657,7 @@ void Game::CreateDeviceDependentResources()
         ResourceUploadBatch resourceUpload(device);
         resourceUpload.Begin();
         DX::ThrowIfFailed(
-            CreateDDSTextureFromFile(device, resourceUpload, L"colormap_r.dds", m_colorRTexResource.ReleaseAndGetAddressOf()));
+            CreateDDSTextureFromFile(device, resourceUpload, L"Textures\\colormap_r.dds", m_colorRTexResource.ReleaseAndGetAddressOf()));
 
         auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
         uploadResourcesFinished.wait();
@@ -654,7 +668,7 @@ void Game::CreateDeviceDependentResources()
         ResourceUploadBatch resourceUpload(device);
         resourceUpload.Begin();
         DX::ThrowIfFailed(
-            CreateDDSTextureFromFile(device, resourceUpload, L"displacement_l.dds", m_heightLTexResource.ReleaseAndGetAddressOf()));
+            CreateDDSTextureFromFile(device, resourceUpload, L"Textures\\displacement_l.dds", m_heightLTexResource.ReleaseAndGetAddressOf()));
 
         auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
         uploadResourcesFinished.wait();
@@ -665,7 +679,7 @@ void Game::CreateDeviceDependentResources()
         ResourceUploadBatch resourceUpload(device);
         resourceUpload.Begin();
         DX::ThrowIfFailed(
-            CreateDDSTextureFromFile(device, resourceUpload, L"displacement_r.dds", m_heightRTexResource.ReleaseAndGetAddressOf()));
+            CreateDDSTextureFromFile(device, resourceUpload, L"Textures\\displacement_r.dds", m_heightRTexResource.ReleaseAndGetAddressOf()));
 
         auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
         uploadResourcesFinished.wait();

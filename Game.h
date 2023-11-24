@@ -4,9 +4,6 @@
 
 #pragma once
 
-#include <DirectXCollision.h>
-#include <GraphicsMemory.h>
-
 #include "DeviceResources.h"
 #include "FaceTree.h"
 #include "Keyboard.h"
