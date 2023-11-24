@@ -67,6 +67,19 @@ void QuadNode::CalcCenter(
 		{
 			vertices[indices[base]].quadPos = m_centerPosition;
 		}
+		/*const uint32_t quadBase = m_baseAddress;
+
+		for (int i = 0; i < 8; i++)
+		{
+			for (int j = 0; j < 8; j++)
+			{
+				for (int v = 0; v < 4; v++)
+				{
+					uint32_t index = indices[quadBase + i * 32 + j * 4 + v];
+					vertices[index].quadPos = m_centerPosition;
+				}
+			}
+		}*/
 	}
 
 	// Calculate height fit with sphere
@@ -126,7 +139,7 @@ void QuadNode::Render(
 {
 	const ContainmentType result = frustum.Contains(m_obb);
 
-	// Do not cull in level 0, 1
+	// Do not cull in level 0
 	if (result <= 0 && m_level >= 1)
 	{
 		culledQuadCount += m_indexCount / 4;

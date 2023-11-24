@@ -126,17 +126,17 @@ private:
     Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_shadowPSO;
     Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_debugPSO;
 
-    // Static VB / IB and Data
+    // Static VB
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_staticVB;
-    Microsoft::WRL::ComPtr<ID3D12Resource>          m_staticIB;
     D3D12_VERTEX_BUFFER_VIEW                        m_vbv;
-    D3D12_INDEX_BUFFER_VIEW                         m_ibv;
 
-    std::vector<uint32_t>							m_staticIndexData;
-    uint32_t										m_staticIndexCount = 0;
+    // Static IB Data
+    std::vector<uint32_t>							m_totalIndexData;
+    uint32_t										m_totalIndexCount = 0;
 
+    // Buffer Sizes
     size_t											m_staticVBSize = 0;
-	size_t											m_staticIBSize = 0;
+    size_t											m_totalIBSize = 0;
 
     // VB and IB for Debug
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_debugVB;

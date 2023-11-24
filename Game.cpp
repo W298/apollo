@@ -23,7 +23,7 @@ Game::Game() noexcept(false)
 {
     // Check Arguments
     {
-        LPWSTR* szArglist;
+        LPWSTR* szArglist = nullptr;
         int nArgs;
 
         szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
@@ -35,7 +35,8 @@ Game::Game() noexcept(false)
 
         m_subDivideCount = std::max(TESS_GROUP_QUAD_LEVEL, static_cast<UINT>(std::stoi(szArglist[1])));
 
-        LocalFree(szArglist);
+        if (szArglist != nullptr)
+			LocalFree(szArglist);
     }
 
     m_deviceResources = std::make_unique<DX::DeviceResources>(
@@ -174,7 +175,7 @@ void Game::Update(DX::StepTimer const& timer)
         	uint32_t totalCulledQuadCount = 0;
             for (int i = 0; i < 6; i++)
             {
-                uint32_t culledQuadCount = m_faceTrees[i]->UpdateIndexData(bf, m_staticIndexData);
+                uint32_t culledQuadCount = m_faceTrees[i]->UpdateIndexData(bf, m_totalIndexData);
                 totalCulledQuadCount += culledQuadCount;
             }
 
@@ -186,11 +187,11 @@ void Game::Update(DX::StepTimer const& timer)
             );*/
 
             // Debug cam position
-            OutputDebugStringW(
+            /*OutputDebugStringW(
                 (L"Cam Position : " + std::to_wstring(m_camPosition.m128_f32[0]) + 
                     L", " + std::to_wstring(m_camPosition.m128_f32[1]) + L", " 
                     + std::to_wstring(m_camPosition.m128_f32[2]) + L"\n").c_str()
-            );
+            );*/
 
             PIXEndEvent();
         }
@@ -860,17 +861,17 @@ void Game::CreateDeviceDependentResources()
     m_faceTrees = geoInfo->faceTrees;
     for (FaceTree* faceTree : m_faceTrees)
     {
-        faceTree->Init(device);
+        faceTree->Init(device, m_deviceResources->GetCommandQueue());
     }
 
-	const auto maxVertexData = std::vector<VertexTess>(geoInfo->vertices);
-    m_staticIndexData = std::vector<uint32_t>(geoInfo->indices);
-    m_staticIndexCount = m_staticIndexData.size();
+	const auto staticVertexData = std::vector<VertexTess>(geoInfo->vertices);
+    m_totalIndexData = std::vector<uint32_t>(geoInfo->indices);
+    m_totalIndexCount = m_totalIndexData.size();
 
     delete geoInfo;
 
-    m_staticVBSize = sizeof(VertexTess) * maxVertexData.size();
-    m_staticIBSize = sizeof(uint32_t) * m_staticIndexCount;
+    m_staticVBSize = sizeof(VertexTess) * staticVertexData.size();
+    m_totalIBSize = sizeof(uint32_t) * m_totalIndexCount;
 
     // Create static vertex buffer and VBV
     {
@@ -878,7 +879,7 @@ void Game::CreateDeviceDependentResources()
         resourceUpload.Begin();
 
         DX::ThrowIfFailed(
-            CreateStaticBuffer(device, resourceUpload, maxVertexData, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, &m_staticVB)
+            CreateStaticBuffer(device, resourceUpload, staticVertexData, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, &m_staticVB)
         );
 
         auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
@@ -888,26 +889,6 @@ void Game::CreateDeviceDependentResources()
         m_vbv.BufferLocation = m_staticVB->GetGPUVirtualAddress();
         m_vbv.StrideInBytes = sizeof(VertexTess);
         m_vbv.SizeInBytes = m_staticVBSize;
-    }
-
-    // Create static index buffer and IBV
-    {
-        CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_DEFAULT);
-        auto desc = CD3DX12_RESOURCE_DESC::Buffer(m_staticIBSize);
-
-    	DX::ThrowIfFailed(device->CreateCommittedResource(
-            &heapProperties,
-            D3D12_HEAP_FLAG_NONE,
-            &desc,
-            D3D12_RESOURCE_STATE_COPY_DEST,
-            nullptr,
-            IID_PPV_ARGS(m_staticIB.GetAddressOf())
-        ));
-
-        // Initialize the index buffer view.
-        m_ibv.BufferLocation = m_staticIB->GetGPUVirtualAddress();
-        m_ibv.Format = DXGI_FORMAT_R32_UINT;
-        m_ibv.SizeInBytes = m_staticIBSize;
     }
 
     // Create vertex buffer (debug)
@@ -971,8 +952,8 @@ void Game::CreateDeviceDependentResources()
 	m_scrollWheelValue = 0;
     m_lightDirection = XMVectorSet(-1.0f, 0.0f, 0.0f, 1.0f);
 
-    m_quadWidth = 300.0f / pow(2, TESS_GROUP_QUAD_LEVEL);
-    m_unitCount = pow(2, m_subDivideCount - TESS_GROUP_QUAD_LEVEL);
+    m_quadWidth = 300.0f / pow(2.0f, TESS_GROUP_QUAD_LEVEL);
+    m_unitCount = pow(2.0f, m_subDivideCount - TESS_GROUP_QUAD_LEVEL);
 }
 
 // Allocate all memory resources that change on a window SizeChanged event.
@@ -999,7 +980,6 @@ void Game::OnDeviceLost()
     m_shadowPSO.Reset();
 
 	m_staticVB.Reset();
-    m_staticIB.Reset();
 
     m_debugVB.Reset();
     m_debugIB.Reset();
@@ -1018,9 +998,10 @@ void Game::OnDeviceLost()
 
     m_shadowMap.reset();
 
-    for (const FaceTree* faceTree : m_faceTrees)
+    for (const auto faceTree : m_faceTrees)
         delete faceTree;
 
+    m_graphicsMemory->GarbageCollect();
     m_graphicsMemory.reset();
 
     m_fence.Reset();

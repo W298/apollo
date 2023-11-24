@@ -1,33 +1,36 @@
 #include "pch.h"
 #include "FaceTree.h"
 
-FaceTree::FaceTree(QuadNode* rootNode, UINT32 faceIndexCount) :
-	m_rootNode(rootNode),
-	m_faceIndexCount(faceIndexCount) {}
+#include "BufferHelpers.h"
+
+FaceTree::FaceTree(QuadNode* rootNode, UINT32 faceIndexCount)
+{
+	m_rootNode = rootNode;
+	m_faceIndexCount = faceIndexCount;
+	m_renderIndexData = std::vector<uint32_t>(m_faceIndexCount);
+}
 
 FaceTree::~FaceTree()
 {
-	delete m_rootNode;
 	m_staticIB.Reset();
 	m_renderIB.Reset();
+	delete m_rootNode;
 }
 
-void FaceTree::Init(ID3D12Device* device)
+void FaceTree::Init(ID3D12Device* device, ID3D12CommandQueue* commandQueue)
 {
 	m_staticIndexCount = m_rootNode->GetIndexCount();
 	m_staticIBSize = sizeof(uint32_t) * m_staticIndexCount;
 
-	CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_DEFAULT);
-	auto desc = CD3DX12_RESOURCE_DESC::Buffer(m_staticIBSize);
+	DirectX::ResourceUploadBatch upload(device);
+	upload.Begin();
 
-	DX::ThrowIfFailed(device->CreateCommittedResource(
-		&heapProperties,
-		D3D12_HEAP_FLAG_NONE,
-		&desc,
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		nullptr,
-		IID_PPV_ARGS(m_staticIB.GetAddressOf())
-	));
+	DX::ThrowIfFailed(
+		CreateStaticBuffer(device, upload, m_renderIndexData, D3D12_RESOURCE_STATE_INDEX_BUFFER, &m_staticIB)
+	);
+
+	auto finish = upload.End(commandQueue);
+	finish.wait();
 
 	// Initialize the index buffer view.
 	m_ibv.BufferLocation = m_staticIB->GetGPUVirtualAddress();

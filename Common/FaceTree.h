@@ -13,7 +13,7 @@ public:
 
 	QuadNode*								GetRootNode() const { return m_rootNode; }
 
-	void Init(ID3D12Device* device);
+	void Init(ID3D12Device* device, ID3D12CommandQueue* commandQueue);
 	uint32_t UpdateIndexData(IN DirectX::BoundingFrustum& frustum, IN const std::vector<uint32_t>& indices);
 	void Upload(DirectX::ResourceUploadBatch& upload, DirectX::GraphicsMemory* graphicsMemory);
 	void Draw(ID3D12GraphicsCommandList* commandList) const;
@@ -27,8 +27,8 @@ private:
 	uint32_t								m_staticIndexCount = 0;
 	uint32_t								m_staticIBSize = 0;
 
-	uint32_t								m_renderIndexCount;
-	uint32_t								m_renderIBSize;
+	uint32_t								m_renderIndexCount = 0;
+	uint32_t								m_renderIBSize = 0;
 
 	D3D12_INDEX_BUFFER_VIEW					m_ibv;
 	Microsoft::WRL::ComPtr<ID3D12Resource>  m_staticIB;
