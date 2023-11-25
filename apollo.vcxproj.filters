@@ -14,6 +14,9 @@
     <Filter Include="Resources">
       <UniqueIdentifier>{01b0fbec-16a9-44d3-8848-f79ebacbb12a}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Common\imgui">
+      <UniqueIdentifier>{83f61c39-d4da-4fab-bf83-2aaf2068e4f3}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -39,6 +42,30 @@
     <ClInclude Include="Common\QuadNode.h">
       <Filter>Common</Filter>
     </ClInclude>
+    <ClInclude Include="Common\imgui\imconfig.h">
+      <Filter>Common\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="Common\imgui\imgui.h">
+      <Filter>Common\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="Common\imgui\imgui_internal.h">
+      <Filter>Common\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="Common\imgui\imstb_rectpack.h">
+      <Filter>Common\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="Common\imgui\imstb_textedit.h">
+      <Filter>Common\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="Common\imgui\imstb_truetype.h">
+      <Filter>Common\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="Common\imgui\imgui_impl_dx12.h">
+      <Filter>Common\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="Common\imgui\imgui_impl_win32.h">
+      <Filter>Common\imgui</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp" />
@@ -62,6 +89,27 @@
     <ClCompile Include="Common\QuadNode.cpp">
       <Filter>Common</Filter>
     </ClCompile>
+    <ClCompile Include="Common\imgui\imgui.cpp">
+      <Filter>Common\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="Common\imgui\imgui_demo.cpp">
+      <Filter>Common\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="Common\imgui\imgui_draw.cpp">
+      <Filter>Common\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="Common\imgui\imgui_tables.cpp">
+      <Filter>Common\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="Common\imgui\imgui_widgets.cpp">
+      <Filter>Common\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="Common\imgui\imgui_impl_dx12.cpp">
+      <Filter>Common\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="Common\imgui\imgui_impl_win32.cpp">
+      <Filter>Common\imgui</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="resource.rc" />
@@ -77,16 +125,16 @@
     </Manifest>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="Shaders\PixelShader.hlsl">
+    <FxCompile Include="Shaders\PS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="Shaders\VertexShader.hlsl">
+    <FxCompile Include="Shaders\VS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="Shaders\HullShader.hlsl">
+    <FxCompile Include="Shaders\HS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="Shaders\DomainShader.hlsl">
+    <FxCompile Include="Shaders\DS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\ShadowVS.hlsl">
@@ -105,6 +153,9 @@
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\DebugPS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\NoShadowPS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>

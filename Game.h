@@ -10,6 +10,7 @@
 #include "Mouse.h"
 #include "ShadowMap.h"
 #include "StepTimer.h"
+#include "../Common/imgui/imgui.h"
 
 class Game final : public DX::IDeviceNotify
 {
@@ -25,7 +26,7 @@ public:
     Game& operator= (Game const&) = delete;
 
     // Initialization and management
-    void Initialize(HWND window, int width, int height);
+    void Initialize(HWND window, int width, int height, UINT subDivideCount);
 
     // Basic game loop
     void Tick();
@@ -43,9 +44,6 @@ public:
     void OnDisplayChange();
     void OnWindowSizeChanged(int width, int height);
 
-    // Properties
-    void GetDefaultSize(int& width, int& height) const noexcept;
-
 private:
     struct OpaqueCB
     {
@@ -55,8 +53,7 @@ private:
         DirectX::XMFLOAT4   lightDirection;
         DirectX::XMFLOAT4   lightColor;
         DirectX::XMMATRIX   shadowTransform;
-        float               shadowBias;
-        float               quadWidth;
+    	float               quadWidth;
         UINT			    unitCount;
     };
 
@@ -95,6 +92,8 @@ private:
     void CreateDeviceDependentResources();
     void CreateWindowSizeDependentResources();
 
+    void ToggleMouseMode();
+
     // Constants
     const DirectX::XMVECTORF32                      DEFAULT_UP_VECTOR = { 0.f, 1.f, 0.f, 0.f };
     const DirectX::XMVECTORF32                      DEFAULT_FORWARD_VECTOR = { 0.f, 0.f, 1.f, 0.f };
@@ -119,13 +118,16 @@ private:
 
     // Root Signature and PSO
     Microsoft::WRL::ComPtr<ID3D12RootSignature>     m_rootSignature;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_pipelineState;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_opaquePSO;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_noShadowPSO;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_wireframePSO;
     Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_shadowPSO;
     Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_debugPSO;
 
     // Static VB
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_staticVB;
-    D3D12_VERTEX_BUFFER_VIEW                        m_vbv;
+    D3D12_VERTEX_BUFFER_VIEW                        m_staticVBV;
+    uint32_t										m_staticVertexCount = 0;
 
     // Static IB Data
     std::vector<uint32_t>							m_totalIndexData;
@@ -165,7 +167,7 @@ private:
     UINT											m_dsvDescSize;
 
     // Camera
-    float                                           m_camMoveSpeed = 130.0f;
+    float                                           m_camMoveSpeed = 30.0f;
     float										    m_camRotateSpeed = 0.5f;
 
     // QuadBox
@@ -174,7 +176,6 @@ private:
     // Shadow
     std::unique_ptr<ShadowMap>  			        m_shadowMap;
     DirectX::BoundingSphere                         m_sceneBounds;
-    float										    m_shadowBias = 0.003f;
 
     // Frustum
     DirectX::BoundingFrustum						m_boundingFrustum;
@@ -206,7 +207,6 @@ private:
     DirectX::XMVECTOR                               m_camForward;
     float                                           m_camYaw;
     float										    m_camPitch;
-    float										    m_scrollWheelValue;
     bool                                            m_orbitMode = false;
 
     // Light states
@@ -223,4 +223,12 @@ private:
     // Tessellation states
     float										    m_quadWidth;
     UINT										    m_unitCount;
+
+    DirectX::Mouse::Mode							m_mouseMode = DirectX::Mouse::Mode::MODE_ABSOLUTE;
+    bool										    m_down = false;
+    bool										    m_lightRotation = false;
+    bool										    m_renderShadow = true;
+    uint32_t										m_culledQuadCount = 0;
+    float										    m_scrollWheelValue = 0;
+    bool										    m_wireframe = false;
 };

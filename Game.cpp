@@ -14,6 +14,9 @@
 #include "ReadData.h"
 #include "ResourceUploadBatch.h"
 
+#include "../Common/imgui/imgui_impl_win32.h"
+#include "../Common/imgui/imgui_impl_dx12.h"
+
 extern void ExitGame() noexcept;
 
 using namespace DirectX;
@@ -21,30 +24,12 @@ using Microsoft::WRL::ComPtr;
 
 Game::Game() noexcept(false)
 {
-    // Check Arguments
-    {
-        LPWSTR* szArglist = nullptr;
-        int nArgs;
-
-        szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
-        if (szArglist == nullptr || nArgs < 1)
-        {
-            OutputDebugStringW(L"CommandLineToArgvW failed\n");
-            ExitGame();
-        }
-
-        m_subDivideCount = std::max(TESS_GROUP_QUAD_LEVEL, static_cast<UINT>(std::stoi(szArglist[1])));
-
-        if (szArglist != nullptr)
-			LocalFree(szArglist);
-    }
-
     m_deviceResources = std::make_unique<DX::DeviceResources>(
-        DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,    // backBufferFormat (DXGI_FORMAT)
-        DXGI_FORMAT_D24_UNORM_S8_UINT,      // depthBufferFormat (DXGI_FORMAT)
-        3,                                  // backBufferCount (UINT)
-        D3D_FEATURE_LEVEL_11_0,             // minFeatureLevel (D3D_FEATURE_LEVEL)
-        0                                   // flags (unsigned int)
+        DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,        // backBufferFormat (DXGI_FORMAT)
+        DXGI_FORMAT_D24_UNORM_S8_UINT,          // depthBufferFormat (DXGI_FORMAT)
+        3,                                      // backBufferCount (UINT)
+        D3D_FEATURE_LEVEL_11_0,                 // minFeatureLevel (D3D_FEATURE_LEVEL)
+        DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH  // flags (unsigned int)
     );
 
     m_deviceResources->RegisterDeviceNotify(this);
@@ -59,13 +44,14 @@ Game::~Game()
 }
 
 // Initialize the Direct3D resources required to run.
-void Game::Initialize(HWND window, int width, int height)
+void Game::Initialize(HWND window, int width, int height, UINT subDivideCount)
 {
     // Initialize input devices.
     m_keyboard = std::make_unique<Keyboard>();
     m_mouse = std::make_unique<Mouse>();
     m_mouse->SetWindow(window);
-    m_mouse->SetMode(Mouse::MODE_RELATIVE);
+
+    m_subDivideCount = subDivideCount;
 
     m_deviceResources->SetWindow(window, width, height);
 
@@ -111,37 +97,31 @@ void Game::Update(DX::StepTimer const& timer)
     // Handle Input
     {
         const auto keyboard = m_keyboard->GetState();
-        if (keyboard.Escape)
+        auto mouse = m_mouse->GetState();
+
+    	if (keyboard.Escape)
         {
             ExitGame();
         }
-        const auto mouse = m_mouse->GetState();
 
         m_orbitMode = keyboard.O ? true : keyboard.F ? false : m_orbitMode;
 
-        if (m_orbitMode)
+        if (keyboard.IsKeyDown(Keyboard::X))
+            m_down = true;
+        if (keyboard.IsKeyUp(Keyboard::X) && m_down)
         {
-            // Orbit mode
-            if (mouse.leftButton)
-            {
-                m_camPosition = XMVector3TransformCoord(m_camPosition, XMMatrixRotationY(mouse.x * elapsedTime / 10.0f));
-                m_camPosition = XMVector3TransformCoord(m_camPosition, XMMatrixRotationX(-mouse.y * elapsedTime / 10.0f));
-            }
-
-            m_camPosition = m_camPosition - XMVector3Normalize(m_camPosition) * (mouse.scrollWheelValue - m_scrollWheelValue) * elapsedTime * 10.0f;
-            m_scrollWheelValue = static_cast<float>(mouse.scrollWheelValue);
-
-            m_viewMatrix = XMMatrixLookAtLH(m_camPosition, XMVectorSet(0, 0, 0, 1), DEFAULT_UP_VECTOR);
+            ToggleMouseMode();
+            m_down = false;
         }
-        else
-        {
-            // Flight mode
-            const float verticalMove = (keyboard.W ? 1.0f : keyboard.S ? -1.0f : 0.0f) * elapsedTime * m_camMoveSpeed;
-            const float horizontalMove = (keyboard.A ? -1.0f : keyboard.D ? 1.0f : 0.0f) * elapsedTime * m_camMoveSpeed;
 
-            // Handle mouse input.
-            m_camYaw += mouse.x * elapsedTime * m_camRotateSpeed;
-            m_camPitch += mouse.y * elapsedTime * m_camRotateSpeed;
+        if (m_mouseMode == Mouse::MODE_RELATIVE)
+        {
+        	if (mouse.x + mouse.y <= 1000)
+            {
+                // Handle mouse input.
+                m_camYaw += mouse.x * elapsedTime * m_camRotateSpeed;
+                m_camPitch += mouse.y * elapsedTime * m_camRotateSpeed;
+            }
 
             // Set view matrix based on camera position and orientation.
             m_camRotationMatrix = XMMatrixRotationRollPitchYaw(m_camPitch, m_camYaw, 0.0f);
@@ -152,14 +132,17 @@ void Game::Update(DX::StepTimer const& timer)
             m_camUp = XMVector3TransformCoord(DEFAULT_UP_VECTOR, m_camRotationMatrix);
             m_camForward = XMVector3TransformCoord(DEFAULT_FORWARD_VECTOR, m_camRotationMatrix);
 
+            // Flight mode
+            const float verticalMove = (keyboard.W ? 1.0f : keyboard.S ? -1.0f : 0.0f) * elapsedTime * m_camMoveSpeed;
+            const float horizontalMove = (keyboard.A ? -1.0f : keyboard.D ? 1.0f : 0.0f) * elapsedTime * m_camMoveSpeed;
+
             m_camPosition += horizontalMove * m_camRight;
             m_camPosition += verticalMove * m_camForward;
 
             m_camLookTarget = m_camPosition + m_camLookTarget;
             m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, m_camUp);
 
-            // Manipulate shadow bias using scroll value.
-            m_shadowBias += (mouse.scrollWheelValue - m_scrollWheelValue) * elapsedTime / 10.0f;
+            m_camMoveSpeed += (mouse.scrollWheelValue - m_scrollWheelValue) * elapsedTime * 50;
             m_scrollWheelValue = static_cast<float>(mouse.scrollWheelValue);
         }
 
@@ -172,33 +155,20 @@ void Game::Update(DX::StepTimer const& timer)
             auto det = XMMatrixDeterminant(m_viewMatrix);
             m_boundingFrustum.Transform(bf, XMMatrixInverse(&det, m_viewMatrix));
 
-        	uint32_t totalCulledQuadCount = 0;
+            m_culledQuadCount = 0;
             for (int i = 0; i < 6; i++)
             {
                 uint32_t culledQuadCount = m_faceTrees[i]->UpdateIndexData(bf, m_totalIndexData);
-                totalCulledQuadCount += culledQuadCount;
+                m_culledQuadCount += culledQuadCount;
             }
-
-            // Check how many quads are culled
-            /*OutputDebugStringW((
-                L"Quad Culled : " + std::to_wstring(totalCulledQuadCount) + 
-                L" / " + std::to_wstring(((float)totalCulledQuadCount / (m_staticIndexCount / 4.0f)) * 100) + 
-                L" % Removed!  " + std::to_wstring(timer.GetFramesPerSecond()) + L"FPS" + L"\n").c_str()
-            );*/
-
-            // Debug cam position
-            /*OutputDebugStringW(
-                (L"Cam Position : " + std::to_wstring(m_camPosition.m128_f32[0]) + 
-                    L", " + std::to_wstring(m_camPosition.m128_f32[1]) + L", " 
-                    + std::to_wstring(m_camPosition.m128_f32[2]) + L"\n").c_str()
-            );*/
 
             PIXEndEvent();
         }
     }
 
     // Light rotation update
-    m_lightDirection = XMVector3TransformCoord(m_lightDirection, XMMatrixRotationY(elapsedTime / 12.0f));
+    if (m_lightRotation)
+		m_lightDirection = XMVector3TransformCoord(m_lightDirection, XMMatrixRotationY(elapsedTime / 12.0f));
 
     // Update Shadow Transform
     {
@@ -304,6 +274,7 @@ void Game::Render()
 
     PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"PASS 1 Shadow Map");
 
+    if (m_renderShadow)
     {
         // Update ShadowCB Data
         {
@@ -350,7 +321,7 @@ void Game::Render()
 
             // Set necessary state.
             commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
-            commandList->IASetVertexBuffers(0, 1, &m_vbv);
+            commandList->IASetVertexBuffers(0, 1, &m_staticVBV);
 
             for (const FaceTree* faceTree : m_faceTrees)
             {
@@ -374,7 +345,7 @@ void Game::Render()
     {
         Clear();
 
-        commandList->SetPipelineState(m_pipelineState.Get());
+        commandList->SetPipelineState(m_wireframe ? m_wireframePSO.Get() : m_renderShadow ? m_opaquePSO.Get() : m_noShadowPSO.Get());
 
         // Update OpaqueCB Data
         {
@@ -387,7 +358,6 @@ void Game::Render()
         	cbOpaque.lightColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 
             cbOpaque.shadowTransform = XMMatrixTranspose(XMLoadFloat4x4(&m_shadowTransform));
-        	cbOpaque.shadowBias = m_shadowBias;
 
             cbOpaque.quadWidth = m_quadWidth;
             cbOpaque.unitCount = m_unitCount;
@@ -401,7 +371,7 @@ void Game::Render()
 
         // Set Topology and VB / IB
         commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
-        commandList->IASetVertexBuffers(0, 1, &m_vbv);
+        commandList->IASetVertexBuffers(0, 1, &m_staticVBV);
 
         for (const FaceTree* faceTree : m_faceTrees)
         {
@@ -427,6 +397,54 @@ void Game::Render()
 
         commandList->DrawIndexedInstanced(m_debugIndexData.size(), 1, 0, 0, 0);
         */
+    }
+
+    PIXEndEvent(commandList);
+
+    PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"PASS 4 imgui");
+
+    // Start the Dear ImGui frame
+    {
+        ImGui_ImplDX12_NewFrame();
+        ImGui_ImplWin32_NewFrame();
+        ImGui::NewFrame();
+
+        {
+            ImGui::Begin("apollo");
+
+            const auto io = ImGui::GetIO();
+
+            ImGui::TextColored(ImVec4(1, 1, 0, 1), "%.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+
+            ImGui::Dummy(ImVec2(0.0f, 20.0f));
+
+            ImGui::Text("Subdivision count: %d", m_subDivideCount);
+            ImGui::Text("Total quad count: %d", m_totalIndexCount / 4);
+            ImGui::Text("Culled quad count: %d (%.3f %% of Total)", 
+                m_culledQuadCount, static_cast<float>(m_culledQuadCount) * 100 / (m_totalIndexCount / 4));
+            ImGui::Text("Render quad count: %d", (m_totalIndexCount - m_culledQuadCount) / 4);
+
+            ImGui::Dummy(ImVec2(0.0f, 20.0f));
+
+            ImGui::Text("Move speed: %.3f (Scroll to Adjust)", m_camMoveSpeed);
+            ImGui::SliderFloat("Rotate speed", &m_camRotateSpeed, 0.0f, 1.0f);
+
+            ImGui::Dummy(ImVec2(0.0f, 20.0f));
+
+            ImGui::Checkbox("Rotate Light", &m_lightRotation);
+            ImGui::Checkbox("Render Shadow", &m_renderShadow);
+            ImGui::Checkbox("Wireframe", &m_wireframe);
+
+            ImGui::Dummy(ImVec2(0.0f, 20.0f));
+
+            ImGui::Text("Press X to Switch mouse mode");
+
+            ImGui::End();
+        }
+
+        // Rendering
+        ImGui::Render();
+        ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList);
     }
 
     PIXEndEvent(commandList);
@@ -510,16 +528,6 @@ void Game::OnWindowSizeChanged(int width, int height)
         return;
 
     CreateWindowSizeDependentResources();
-
-    // TODO: Game window is being resized.
-}
-
-// Properties
-void Game::GetDefaultSize(int& width, int& height) const noexcept
-{
-    // TODO: Change to desired default window size (note minimum size is 320x200).
-    width = 2560;
-    height = 1440;
 }
 #pragma endregion
 
@@ -557,7 +565,7 @@ void Game::CreateDeviceDependentResources()
 	// Create root signature with root CBV, descriptor table (with SRV) and sampler
     {
         CD3DX12_DESCRIPTOR_RANGE srvTable;
-        srvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0);
+        srvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 6, 0);
 
         CD3DX12_ROOT_PARAMETER rootParameters[3] = {};
         rootParameters[0].InitAsDescriptorTable(1, &srvTable, D3D12_SHADER_VISIBILITY_ALL);     // register (t0)
@@ -632,7 +640,7 @@ void Game::CreateDeviceDependentResources()
     // Create the SRV Heap.
     {
         D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-        srvHeapDesc.NumDescriptors = 5;
+        srvHeapDesc.NumDescriptors = 6;
         srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         DX::ThrowIfFailed(
@@ -726,6 +734,26 @@ void Game::CreateDeviceDependentResources()
             CD3DX12_CPU_DESCRIPTOR_HANDLE(m_srvHeap->GetCPUDescriptorHandleForHeapStart(), 4, m_cbvsrvDescSize),
             CD3DX12_GPU_DESCRIPTOR_HANDLE(m_srvHeap->GetGPUDescriptorHandleForHeapStart(), 4, m_cbvsrvDescSize),
             CD3DX12_CPU_DESCRIPTOR_HANDLE(m_deviceResources->GetDepthStencilView(), 1, m_dsvDescSize));
+
+        // Setup Dear ImGui context
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        auto io = ImGui::GetIO();
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+
+        // Setup Platform/Renderer backends
+        ImGui_ImplWin32_Init(m_deviceResources->GetWindow());
+        ImGui_ImplDX12_Init(
+            device, 
+            m_deviceResources->GetBackBufferCount(),
+            m_deviceResources->GetBackBufferFormat(), 
+            m_srvHeap.Get(),
+            CD3DX12_CPU_DESCRIPTOR_HANDLE(m_srvHeap->GetCPUDescriptorHandleForHeapStart(), 5, m_cbvsrvDescSize),
+            CD3DX12_GPU_DESCRIPTOR_HANDLE(m_srvHeap->GetGPUDescriptorHandleForHeapStart(), 5, m_cbvsrvDescSize));
+
+        // Setup Dear ImGui style
+        ImGui::StyleColorsDark();
     }
 
     // Create the opaque constant buffer memory
@@ -777,10 +805,10 @@ void Game::CreateDeviceDependentResources()
         };
 
         // Load shaders
-        auto vertexShaderBlob = DX::ReadData(L"VertexShader.cso");
-        auto hullShaderBlob = DX::ReadData(L"HullShader.cso");
-        auto domainShaderBlob = DX::ReadData(L"DomainShader.cso");
-        auto pixelShaderBlob = DX::ReadData(L"PixelShader.cso");
+        auto vertexShaderBlob = DX::ReadData(L"VS.cso");
+        auto hullShaderBlob = DX::ReadData(L"HS.cso");
+        auto domainShaderBlob = DX::ReadData(L"DS.cso");
+        auto pixelShaderBlob = DX::ReadData(L"PS.cso");
 
         // Create Opaque PSO
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
@@ -803,7 +831,26 @@ void Game::CreateDeviceDependentResources()
         DX::ThrowIfFailed(
             device->CreateGraphicsPipelineState(
                 &psoDesc,
-                IID_PPV_ARGS(m_pipelineState.ReleaseAndGetAddressOf())));
+                IID_PPV_ARGS(m_opaquePSO.ReleaseAndGetAddressOf())));
+
+        // Create No Shadow Opaque PSO
+        auto noShadowPSBlob = DX::ReadData(L"NoShadowPS.cso");
+        auto noShadowPSODesc = D3D12_GRAPHICS_PIPELINE_STATE_DESC(psoDesc);
+        noShadowPSODesc.PS = { noShadowPSBlob.data(), noShadowPSBlob.size() };
+        DX::ThrowIfFailed(
+            device->CreateGraphicsPipelineState(
+                &noShadowPSODesc,
+                IID_PPV_ARGS(m_noShadowPSO.ReleaseAndGetAddressOf())));
+
+        // Create Wireframe PSO
+        auto wireframePSBlob = DX::ReadData(L"DebugPS.cso");
+        auto wireframePSODesc = D3D12_GRAPHICS_PIPELINE_STATE_DESC(psoDesc);
+        wireframePSODesc.PS = { wireframePSBlob.data(), wireframePSBlob.size() };
+        wireframePSODesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
+        DX::ThrowIfFailed(
+            device->CreateGraphicsPipelineState(
+                &wireframePSODesc,
+                IID_PPV_ARGS(m_wireframePSO.ReleaseAndGetAddressOf())));
 
         // Load shadow shaders
         auto shadowVSBlob = DX::ReadData(L"ShadowVS.cso");
@@ -869,7 +916,8 @@ void Game::CreateDeviceDependentResources()
 
     delete geoInfo;
 
-    m_staticVBSize = sizeof(VertexTess) * staticVertexData.size();
+    m_staticVertexCount = staticVertexData.size();
+    m_staticVBSize = sizeof(VertexTess) * m_staticVertexCount;
     m_totalIBSize = sizeof(uint32_t) * m_totalIndexCount;
 
     // Create static vertex buffer and VBV
@@ -885,9 +933,9 @@ void Game::CreateDeviceDependentResources()
         uploadResourcesFinished.wait();
 
         // Initialize the vertex buffer view.
-        m_vbv.BufferLocation = m_staticVB->GetGPUVirtualAddress();
-        m_vbv.StrideInBytes = sizeof(VertexTess);
-        m_vbv.SizeInBytes = m_staticVBSize;
+        m_staticVBV.BufferLocation = m_staticVB->GetGPUVirtualAddress();
+        m_staticVBV.StrideInBytes = sizeof(VertexTess);
+        m_staticVBV.SizeInBytes = m_staticVBSize;
     }
 
     // Create vertex buffer (debug)
@@ -942,13 +990,12 @@ void Game::CreateDeviceDependentResources()
     m_camRight = DEFAULT_RIGHT_VECTOR;
     m_camYaw = -6.2f;
     m_camPitch = 0.0f;
-    m_camPosition = XMVectorSet(0.0f, 0.0f, -200.0f, 0.0f);
+    m_camPosition = XMVectorSet(0.0f, 0.0f, -500.0f, 0.0f);
     m_camLookTarget = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
 
     m_worldMatrix = XMMatrixIdentity();
     m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, DEFAULT_UP_VECTOR);
 
-	m_scrollWheelValue = 0;
     m_lightDirection = XMVectorSet(-1.0f, 0.0f, 0.0f, 1.0f);
 
     m_quadWidth = 300.0f / pow(2.0f, TESS_GROUP_QUAD_LEVEL);
@@ -972,10 +1019,25 @@ void Game::CreateWindowSizeDependentResources()
     m_deviceResources->GetCommandQueue()->Signal(m_fence.Get(), currentIdx);
 }
 
+void Game::ToggleMouseMode()
+{
+    if (m_mouseMode == Mouse::Mode::MODE_ABSOLUTE)
+    {
+        m_mouseMode = Mouse::Mode::MODE_RELATIVE;
+	}
+	else
+	{
+        m_mouseMode = Mouse::Mode::MODE_ABSOLUTE;
+	}
+
+    m_mouse->SetMode(m_mouseMode);
+    SetCursorPos(m_deviceResources->GetOutputSize().right / 2, m_deviceResources->GetOutputSize().bottom / 2);
+}
+
 void Game::OnDeviceLost()
 {
     m_rootSignature.Reset();
-    m_pipelineState.Reset();
+    m_opaquePSO.Reset();
     m_shadowPSO.Reset();
 
 	m_staticVB.Reset();
@@ -1004,6 +1066,10 @@ void Game::OnDeviceLost()
     m_graphicsMemory.reset();
 
     m_fence.Reset();
+
+    ImGui_ImplDX12_Shutdown();
+    ImGui_ImplWin32_Shutdown();
+    ImGui::DestroyContext();
 }
 
 void Game::OnDeviceRestored()

@@ -12,7 +12,6 @@ struct OpaqueCBType
     float4 lightDirection;
     float4 lightColor;
     float4x4 shadowTransform;
-    float shadowBias;
     float quadWidth;
     uint unitCount;
 };
@@ -316,8 +315,8 @@ float3 GetNormalFromHeight(Texture2D tex, float2 texSize, float2 sTexCoord, floa
     float ym = tex.Sample(anisotropicClampMip1, sTexCoord + ymOffset * multiplier).r;
     float yp = tex.Sample(anisotropicClampMip1, sTexCoord + ypOffset * multiplier).r;
 
-    float3 va = normalize(float3(1.0f, 0, (xp - xm)));
-    float3 vb = normalize(float3(0, 1.0f, (yp - ym)));
+    float3 va = normalize(float3(1.0f, 0, (xp - xm) * 0.4f));
+    float3 vb = normalize(float3(0, 1.0f, (yp - ym) * 0.4f));
 
     return normalize(cross(va, vb));
 }
@@ -341,7 +340,7 @@ float CalcShadowFactor(float4 shadowPosH)
     shadowPosH.xyz /= shadowPosH.w;
 
     // Depth in NDC space.
-    float depth = shadowPosH.z - cb.shadowBias;
+    float depth = shadowPosH.z - 0.000773f;
 
     uint width, height, numMips;
     texMap[4].GetDimensions(0, width, height, numMips);

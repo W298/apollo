@@ -4,6 +4,7 @@
 
 #include "pch.h"
 #include "Game.h"
+#include "../Common/ImGui/imgui_impl_win32.h"
 
 using namespace DirectX;
 
@@ -32,6 +33,24 @@ LPCWSTR g_szAppName = L"apollo";
 
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 void ExitGame() noexcept;
+
+#ifdef _DEBUG
+void CheckMemoryLeak()
+{
+    HMODULE dxgidebugdll = GetModuleHandleW(L"dxgidebug.dll");
+    decltype(&DXGIGetDebugInterface) GetDebugInterface = reinterpret_cast<decltype(&DXGIGetDebugInterface)>(GetProcAddress(dxgidebugdll, "DXGIGetDebugInterface"));
+
+    IDXGIDebug* debug;
+
+    GetDebugInterface(IID_PPV_ARGS(&debug));
+
+    OutputDebugStringW(L"Direct3D Object ref count Leak\r\n");
+    debug->ReportLiveObjects(DXGI_DEBUG_D3D12, DXGI_DEBUG_RLO_DETAIL);
+    OutputDebugStringW(L"\r\n");
+
+    debug->Release();
+}
+#endif
 
 // Entry point
 int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
@@ -69,11 +88,26 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         if (!RegisterClassExW(&wcex))
             return 1;
 
-        // Create window
-        int w, h;
-        g_game->GetDefaultSize(w, h);
+        // Check Arguments
+        LPWSTR* szArglist = nullptr;
+        int nArgs;
 
-        RECT rc = { 0, 0, static_cast<LONG>(w), static_cast<LONG>(h) };
+        szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
+        if (szArglist == nullptr || nArgs < 1)
+        {
+            OutputDebugStringW(L"CommandLineToArgvW failed\n");
+            ExitGame();
+        }
+
+        const UINT subDivideCount = std::min(9u, std::max(7u, static_cast<UINT>(std::stoi(szArglist[1]))));
+        const UINT width = std::max(1280u, static_cast<UINT>(std::stoi(szArglist[2])));
+        const UINT height = std::max(720u, static_cast<UINT>(std::stoi(szArglist[3])));
+
+        if (szArglist != nullptr)
+            LocalFree(szArglist);
+
+        // Create window
+        RECT rc = { 0, 0, static_cast<LONG>(width), static_cast<LONG>(height) };
 
         AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
 
@@ -81,18 +115,16 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
             CW_USEDEFAULT, CW_USEDEFAULT, rc.right - rc.left, rc.bottom - rc.top,
             nullptr, nullptr, hInstance,
             g_game.get());
-        // TODO: Change to CreateWindowExW(WS_EX_TOPMOST, L"apolloWindowClass", g_szAppName, WS_POPUP,
-        // to default to fullscreen.
 
         if (!hwnd)
             return 1;
 
-        ShowWindow(hwnd, nCmdShow);
-        // TODO: Change nCmdShow to SW_SHOWMAXIMIZED to default to fullscreen.
+        ShowWindow(hwnd, SW_SHOW);
 
         GetClientRect(hwnd, &rc);
+        SetCursorPos(width/2, height/2);
 
-        g_game->Initialize(hwnd, rc.right - rc.left, rc.bottom - rc.top);
+        g_game->Initialize(hwnd, rc.right - rc.left, rc.bottom - rc.top, subDivideCount);
     }
 
     // Main message loop
@@ -112,8 +144,14 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 
     g_game.reset();
 
+#ifdef _DEBUG
+    CheckMemoryLeak();
+#endif
+
     return static_cast<int>(msg.wParam);
 }
+
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 // Windows procedure
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -123,6 +161,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     static bool s_minimized = false;
     static bool s_fullscreen = false;
     // TODO: Set s_fullscreen to true if defaulting to fullscreen.
+
+    if (ImGui_ImplWin32_WndProcHandler(hWnd, message, wParam, lParam))
+        return true;
 
     auto game = reinterpret_cast<Game*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
 
@@ -279,35 +320,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
     case WM_SYSKEYDOWN:
         Keyboard::ProcessMessage(message, wParam, lParam);
-        if (wParam == VK_RETURN && (lParam & 0x60000000) == 0x20000000)
-        {
-            // Implements the classic ALT+ENTER fullscreen toggle
-            if (s_fullscreen)
-            {
-                SetWindowLongPtr(hWnd, GWL_STYLE, WS_OVERLAPPEDWINDOW);
-                SetWindowLongPtr(hWnd, GWL_EXSTYLE, 0);
-
-                int width = 800;
-                int height = 600;
-                if (game)
-                    game->GetDefaultSize(width, height);
-
-                ShowWindow(hWnd, SW_SHOWNORMAL);
-
-                SetWindowPos(hWnd, HWND_TOP, 0, 0, width, height, SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED);
-            }
-            else
-            {
-                SetWindowLongPtr(hWnd, GWL_STYLE, WS_POPUP);
-                SetWindowLongPtr(hWnd, GWL_EXSTYLE, WS_EX_TOPMOST);
-
-                SetWindowPos(hWnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
-
-                ShowWindow(hWnd, SW_SHOWMAXIMIZED);
-            }
-
-            s_fullscreen = !s_fullscreen;
-        }
         break;
 
     case WM_MENUCHAR:
