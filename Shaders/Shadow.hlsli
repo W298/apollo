@@ -82,7 +82,7 @@ float CalcTessFactor(float3 planePos)
     float d = distance(spherePos, cb.cameraPosition.xyz);
     float s = saturate((d - near) / (far - near));
 
-    return pow(2.0f, (int) (-8 * pow(s, 0.8f) + 8));
+    return pow(2.0f, (int) (-5 * pow(s, 0.8f) + 5));
 }
 
 PatchTess ConstantHS(InputPatch<VS_OUTPUT, 4> patch, int patchID : SV_PrimitiveID)

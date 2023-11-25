@@ -26,7 +26,7 @@ void FaceTree::Init(ID3D12Device* device, ID3D12CommandQueue* commandQueue)
 	upload.Begin();
 
 	DX::ThrowIfFailed(
-		CreateStaticBuffer(device, upload, m_renderIndexData, D3D12_RESOURCE_STATE_INDEX_BUFFER, &m_staticIB)
+		CreateStaticBuffer(device, upload, m_renderIndexData, D3D12_RESOURCE_STATE_INDEX_BUFFER, m_staticIB.ReleaseAndGetAddressOf())
 	);
 
 	auto finish = upload.End(commandQueue);

@@ -1,12 +1,10 @@
 #include "pch.h"
-#include "GeometryGenerator.h"
+#include "QuadSphereGenerator.h"
 
 using namespace DirectX;
 
-GeometryGenerator::GeometryInfo* GeometryGenerator::CreateQuadBox(
-	float width, float height, float depth, 
-	std::uint32_t numSubdivisions, 
-	std::vector<VertexPosition>& debugVertexData, std::vector<uint32_t>& debugIndexData)
+QuadSphereGenerator::QuadSphereInfo* QuadSphereGenerator::CreateQuadSphere(
+	float width, float height, float depth, std::uint32_t numSubdivisions)
 {
 	MeshData meshData;
 
@@ -72,20 +70,19 @@ GeometryGenerator::GeometryInfo* GeometryGenerator::CreateQuadBox(
 		index[3] = i[3 + f * 4];
 
 		const auto root = new QuadNode(0, faceIndexCount, index, f * faceIndexCount, width);
-		root->CalcCenter(meshData.vertices, meshData.indices, debugVertexData, debugIndexData);
+		root->CalcCenter(meshData.vertices, meshData.indices);
 		root->CreateChildren(
 			std::min(numSubdivisions, QUAD_NODE_MAX_LEVEL), 
 			meshData.vertices, 
-			meshData.indices, 
-			debugVertexData, debugIndexData);
+			meshData.indices);
 
 		faceTrees.push_back(new FaceTree(root, faceIndexCount));
 	}
 
-	return new GeometryInfo(meshData.vertices, meshData.indices, faceTrees);
+	return new QuadSphereInfo(meshData.vertices, meshData.indices, faceTrees);
 }
 
-void GeometryGenerator::SubdivideQuad(MeshData& meshData)
+void QuadSphereGenerator::SubdivideQuad(MeshData& meshData)
 {
 	// Save a copy of the input geometry.
 	const MeshData inputCopy = meshData;
@@ -149,7 +146,7 @@ void GeometryGenerator::SubdivideQuad(MeshData& meshData)
 	}
 }
 
-VertexTess GeometryGenerator::MidPoint(const VertexTess& v0, const VertexTess& v1)
+VertexTess QuadSphereGenerator::MidPoint(const VertexTess& v0, const VertexTess& v1)
 {
 	const XMVECTOR p0 = XMLoadFloat3(&v0.position);
 	const XMVECTOR p1 = XMLoadFloat3(&v1.position);

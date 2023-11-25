@@ -122,7 +122,6 @@ private:
     Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_noShadowPSO;
     Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_wireframePSO;
     Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_shadowPSO;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState>     m_debugPSO;
 
     // Static VB
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_staticVB;
@@ -136,14 +135,6 @@ private:
     // Buffer Sizes
     size_t											m_staticVBSize = 0;
     size_t											m_totalIBSize = 0;
-
-    // VB and IB for Debug
-    Microsoft::WRL::ComPtr<ID3D12Resource>          m_debugVB;
-    Microsoft::WRL::ComPtr<ID3D12Resource>          m_debugIB;
-    D3D12_VERTEX_BUFFER_VIEW                        m_debugVBV;
-    D3D12_INDEX_BUFFER_VIEW                         m_debugIBV;
-    std::vector<DirectX::VertexPosition>			m_debugVertexData;
-    std::vector<uint32_t>						    m_debugIndexData;
 
     // CB
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_cbUploadHeap;

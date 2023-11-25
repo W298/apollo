@@ -419,17 +419,17 @@ PS_OUTPUT PS(DS_OUT input)
     float shadowFactor = CalcShadowFactor(mul(float4(input.catPos, 1.0f), cb.shadowTransform));
     float shadowCorrector = lerp(0.7f, 1.0f, max(dot(normCatPos, -cb.lightDirection.xyz), 0.0f));
 
-    float lowNoise = lerp(0.95f, 1.0f, noise(sTexCoord * 30000.0f));
-    float highNoise = lerp(0.92f, 1.0f, noise(sTexCoord * 80000.0f));
+    float highNoise = lerp(0.92f, 1.0f, noise(sTexCoord * 60000.0f));
 
     float h = distance(input.catPos, float3(0, 0, 0));
-    h -= 149.0f;
+    h -= 140.0f;
+    h /= 20;
 
     float4 final = float4(
 		saturate((diffuse * saturate(shadowFactor + shadowCorrector) + ambient) 
 		* texColor.rgb 
-		* lowNoise * highNoise 
-		* lerp(0.98f, 1.0f, h)), 1);
+		* highNoise 
+		* lerp(0.9f, 1.0f, h)), 1);
 
     output.color = final;
 

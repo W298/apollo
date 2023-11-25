@@ -14,15 +14,13 @@ QuadNode::QuadNode(char level, uint32_t indexCount, uint32_t index[4], uint32_t 
 
 QuadNode::~QuadNode()
 {
-	for (const auto& c : m_children)
+	for (const auto c : m_children)
 		delete c;
 }
 
 void QuadNode::CreateChildren(
 	const char limit,
-	std::vector<VertexTess>& vertices,
-	const std::vector<uint32_t>& indices,
-	std::vector<VertexPosition>& debugVertexData, std::vector<uint32_t>& debugIndexData)
+	std::vector<VertexTess>& vertices, const std::vector<uint32_t>& indices)
 {
 	if (m_level + 1 > limit)
 		return;
@@ -39,16 +37,15 @@ void QuadNode::CreateChildren(
 		index[3] = indices[3 * qqic + c * qic + m_baseAddress];
 
 		const auto child = new QuadNode(m_level + 1, qic, index, c * qic + m_baseAddress, m_width / 2);
-		child->CalcCenter(vertices, indices, debugVertexData, debugIndexData);
-		child->CreateChildren(limit, vertices, indices, debugVertexData, debugIndexData);
+		child->CalcCenter(vertices, indices);
+		child->CreateChildren(limit, vertices, indices);
 
 		m_children[c] = child;
 	}
 }
 
 void QuadNode::CalcCenter(
-	std::vector<VertexTess>& vertices, const std::vector<uint32_t>& indices,
-	std::vector<VertexPosition>& debugVertexData, std::vector<uint32_t>& debugIndexData)
+	std::vector<VertexTess>& vertices, const std::vector<uint32_t>& indices)
 {
 	// Calculate center position with corner position
 	auto center = XMVectorSet(0, 0, 0, 0);
@@ -67,19 +64,6 @@ void QuadNode::CalcCenter(
 		{
 			vertices[indices[base]].quadPos = m_centerPosition;
 		}
-		/*const uint32_t quadBase = m_baseAddress;
-
-		for (int i = 0; i < 8; i++)
-		{
-			for (int j = 0; j < 8; j++)
-			{
-				for (int v = 0; v < 4; v++)
-				{
-					uint32_t index = indices[quadBase + i * 32 + j * 4 + v];
-					vertices[index].quadPos = m_centerPosition;
-				}
-			}
-		}*/
 	}
 
 	// Calculate height fit with sphere
@@ -112,25 +96,6 @@ void QuadNode::CalcCenter(
 		obbCenter,
 		XMFLOAT3(m_width * 0.6f, m_width * 0.6f, 0.1f),
 		quaternionVec);
-
-	// For Debug
-	XMFLOAT3 corners[8];
-	m_obb.GetCorners(corners);
-
-	if (m_level != 4) return;
-
-	std::vector<uint32_t> ary = { 0, 1, 2, 2, 3, 0, 4, 0, 3, 3, 7, 4, 5, 4, 7, 7, 6, 5, 1, 5, 6, 6, 2, 1, 2, 6, 7, 7, 3, 2, 5, 1, 0, 0, 4, 5 };
-	for (int i = 0; i < ary.size(); i++)
-	{
-		ary[i] += debugVertexData.size();
-	}
-
-	debugIndexData.insert(debugIndexData.end(), ary.begin(), ary.end());
-
-	for (XMFLOAT3 corner : corners)
-	{
-		debugVertexData.push_back(VertexPosition(corner));
-	}
 }
 
 void QuadNode::Render(

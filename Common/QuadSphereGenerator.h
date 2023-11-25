@@ -5,7 +5,7 @@
 
 #include "FaceTree.h"
 
-class GeometryGenerator
+class QuadSphereGenerator
 {
 public:
 	struct MeshData
@@ -14,13 +14,13 @@ public:
         std::vector<std::uint32_t> indices;
 	};
 
-	struct GeometryInfo
+	struct QuadSphereInfo
 	{
 		std::vector<VertexTess> vertices;
 		std::vector<uint32_t> indices;
 		std::vector<FaceTree*> faceTrees;
 
-		GeometryInfo(
+		QuadSphereInfo(
 			const std::vector<VertexTess>& vertices,
 			const std::vector<uint32_t>& indices,
 			const std::vector<FaceTree*>& faceTrees)
@@ -31,11 +31,9 @@ public:
 		}
 	};
 
-	static GeometryInfo* CreateQuadBox(
+	static QuadSphereInfo* CreateQuadSphere(
 		float width, float height, float depth,
-		std::uint32_t numSubdivisions,
-		std::vector<DirectX::VertexPosition>& debugVertexData,
-		std::vector<uint32_t>& debugIndexData);
+		std::uint32_t numSubdivisions);
 private:
 	static void SubdivideQuad(MeshData& meshData);
 	static VertexTess MidPoint(const VertexTess& v0, const VertexTess& v1);

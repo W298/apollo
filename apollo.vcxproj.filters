@@ -33,7 +33,7 @@
     <ClInclude Include="Common\StepTimer.h">
       <Filter>Common</Filter>
     </ClInclude>
-    <ClInclude Include="Common\GeometryGenerator.h">
+    <ClInclude Include="Common\QuadSphereGenerator.h">
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="Common\FaceTree.h">
@@ -74,7 +74,7 @@
     <ClCompile Include="Common\DeviceResources.cpp">
       <Filter>Common</Filter>
     </ClCompile>
-    <ClCompile Include="Common\GeometryGenerator.cpp">
+    <ClCompile Include="Common\QuadSphereGenerator.cpp">
       <Filter>Common</Filter>
     </ClCompile>
     <ClCompile Include="ShadowMap.h">
@@ -149,9 +149,6 @@
     <FxCompile Include="Shaders\ShadowDS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="Shaders\DebugVS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
     <FxCompile Include="Shaders\DebugPS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
@@ -167,8 +164,5 @@
       <Filter>Shaders</Filter>
     </None>
     <None Include="packages.config" />
-    <None Include="Shaders\DebugShader.hlsli">
-      <Filter>Shaders</Filter>
-    </None>
   </ItemGroup>
 </Project>

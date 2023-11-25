@@ -10,7 +10,7 @@
 #include "BufferHelpers.h"
 #include "DDSTextureLoader.h"
 #include "DirectXHelpers.h"
-#include "GeometryGenerator.h"
+#include "QuadSphereGenerator.h"
 #include "ReadData.h"
 #include "ResourceUploadBatch.h"
 
@@ -107,7 +107,9 @@ void Game::Update(DX::StepTimer const& timer)
         m_orbitMode = keyboard.O ? true : keyboard.F ? false : m_orbitMode;
 
         if (keyboard.IsKeyDown(Keyboard::X))
+        {
             m_down = true;
+        }
         if (keyboard.IsKeyUp(Keyboard::X) && m_down)
         {
             ToggleMouseMode();
@@ -122,29 +124,29 @@ void Game::Update(DX::StepTimer const& timer)
                 m_camYaw += mouse.x * elapsedTime * m_camRotateSpeed;
                 m_camPitch += mouse.y * elapsedTime * m_camRotateSpeed;
             }
-
-            // Set view matrix based on camera position and orientation.
-            m_camRotationMatrix = XMMatrixRotationRollPitchYaw(m_camPitch, m_camYaw, 0.0f);
-            m_camLookTarget = XMVector3TransformCoord(DEFAULT_FORWARD_VECTOR, m_camRotationMatrix);
-            m_camLookTarget = XMVector3Normalize(m_camLookTarget);
-
-            m_camRight = XMVector3TransformCoord(DEFAULT_RIGHT_VECTOR, m_camRotationMatrix);
-            m_camUp = XMVector3TransformCoord(DEFAULT_UP_VECTOR, m_camRotationMatrix);
-            m_camForward = XMVector3TransformCoord(DEFAULT_FORWARD_VECTOR, m_camRotationMatrix);
-
-            // Flight mode
-            const float verticalMove = (keyboard.W ? 1.0f : keyboard.S ? -1.0f : 0.0f) * elapsedTime * m_camMoveSpeed;
-            const float horizontalMove = (keyboard.A ? -1.0f : keyboard.D ? 1.0f : 0.0f) * elapsedTime * m_camMoveSpeed;
-
-            m_camPosition += horizontalMove * m_camRight;
-            m_camPosition += verticalMove * m_camForward;
-
-            m_camLookTarget = m_camPosition + m_camLookTarget;
-            m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, m_camUp);
-
-            m_camMoveSpeed += (mouse.scrollWheelValue - m_scrollWheelValue) * elapsedTime * 50;
-            m_scrollWheelValue = static_cast<float>(mouse.scrollWheelValue);
         }
+
+        // Set view matrix based on camera position and orientation.
+        m_camRotationMatrix = XMMatrixRotationRollPitchYaw(m_camPitch, m_camYaw, 0.0f);
+        m_camLookTarget = XMVector3TransformCoord(DEFAULT_FORWARD_VECTOR, m_camRotationMatrix);
+        m_camLookTarget = XMVector3Normalize(m_camLookTarget);
+
+        m_camRight = XMVector3TransformCoord(DEFAULT_RIGHT_VECTOR, m_camRotationMatrix);
+        m_camUp = XMVector3TransformCoord(DEFAULT_UP_VECTOR, m_camRotationMatrix);
+        m_camForward = XMVector3TransformCoord(DEFAULT_FORWARD_VECTOR, m_camRotationMatrix);
+
+        // Flight mode
+        const float verticalMove = (keyboard.W ? 1.0f : keyboard.S ? -1.0f : 0.0f) * elapsedTime * m_camMoveSpeed;
+        const float horizontalMove = (keyboard.A ? -1.0f : keyboard.D ? 1.0f : 0.0f) * elapsedTime * m_camMoveSpeed;
+
+        m_camPosition += horizontalMove * m_camRight;
+        m_camPosition += verticalMove * m_camForward;
+
+        m_camLookTarget = m_camPosition + m_camLookTarget;
+        m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, m_camUp);
+
+        m_camMoveSpeed += (mouse.scrollWheelValue - m_scrollWheelValue) * elapsedTime * 50;
+        m_scrollWheelValue = static_cast<float>(mouse.scrollWheelValue);
 
         // Do frustum culling
         {
@@ -382,26 +384,10 @@ void Game::Render()
     PIXEndEvent(commandList);
 
     //--------------------------------------------------------------------------------------
-    // PASS 3 - Debug
+    // PASS 3 - imgui
     //--------------------------------------------------------------------------------------
 
-    PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"PASS 3 Debug");
-
-    {
-        /*
-        commandList->SetPipelineState(m_debugPSO.Get());
-
-        commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        commandList->IASetVertexBuffers(0, 1, &m_debugVBV);
-        commandList->IASetIndexBuffer(&m_debugIBV);
-
-        commandList->DrawIndexedInstanced(m_debugIndexData.size(), 1, 0, 0, 0);
-        */
-    }
-
-    PIXEndEvent(commandList);
-
-    PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"PASS 4 imgui");
+    PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"PASS 3 imgui");
 
     // Start the Dear ImGui frame
     {
@@ -420,9 +406,13 @@ void Game::Render()
 
             ImGui::Text("Subdivision count: %d", m_subDivideCount);
             ImGui::Text("Total quad count: %d", m_totalIndexCount / 4);
-            ImGui::Text("Culled quad count: %d (%.3f %% of Total)", 
+        	ImGui::Text("Render quad count: %d", (m_totalIndexCount - m_culledQuadCount) / 4);
+
+            ImGui::Dummy(ImVec2(0.0f, 10.0f));
+
+            ImGui::Text("Culled quad count: %d (%.3f %% of Total)",
                 m_culledQuadCount, static_cast<float>(m_culledQuadCount) * 100 / (m_totalIndexCount / 4));
-            ImGui::Text("Render quad count: %d", (m_totalIndexCount - m_culledQuadCount) / 4);
+            ImGui::Text("(By view frustum culling)");
 
             ImGui::Dummy(ImVec2(0.0f, 20.0f));
 
@@ -552,7 +542,7 @@ void Game::CreateDeviceDependentResources()
     m_graphicsMemory = std::make_unique<GraphicsMemory>(device);
 
     // Initialize Shadow Map Instance
-    m_shadowMap = std::make_unique<ShadowMap>(m_deviceResources->GetD3DDevice(), 8192, 8192);
+    m_shadowMap = std::make_unique<ShadowMap>(m_deviceResources->GetD3DDevice(), 4096, 4096);
 
     // Initialize Bounds for Shadow Map
     m_sceneBounds.Center = XMFLOAT3(0.0f, 0.0f, 0.0f);
@@ -875,34 +865,10 @@ void Game::CreateDeviceDependentResources()
             device->CreateGraphicsPipelineState(
                 &shadowPSODesc,
                 IID_PPV_ARGS(m_shadowPSO.ReleaseAndGetAddressOf())));
-
-        // Load debug shaders
-        auto debugVSBlob = DX::ReadData(L"DebugVS.cso");
-        auto debugPSBlob = DX::ReadData(L"DebugPS.cso");
-
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC debugPSODesc = {};
-        debugPSODesc.InputLayout = { s_inputElementDesc, _countof(s_inputElementDesc) };
-        debugPSODesc.pRootSignature = m_rootSignature.Get();
-        debugPSODesc.VS = { debugVSBlob.data(), debugVSBlob.size() };
-        debugPSODesc.PS = { debugPSBlob.data(), debugPSBlob.size() };
-        debugPSODesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
-        debugPSODesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
-        debugPSODesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-        debugPSODesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-        debugPSODesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-        debugPSODesc.SampleMask = UINT_MAX;
-        debugPSODesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        debugPSODesc.NumRenderTargets = 1;
-        debugPSODesc.RTVFormats[0] = m_deviceResources->GetBackBufferFormat();
-        debugPSODesc.SampleDesc.Count = 1;
-        DX::ThrowIfFailed(
-            device->CreateGraphicsPipelineState(
-                &debugPSODesc,
-                IID_PPV_ARGS(m_debugPSO.ReleaseAndGetAddressOf())));
     }
 
     // Compute sphere vertices and indices
-    auto geoInfo = GeometryGenerator::CreateQuadBox(300.0f, 300.0f, 300.0f, m_subDivideCount, m_debugVertexData, m_debugIndexData);
+    auto geoInfo = QuadSphereGenerator::CreateQuadSphere(300.0f, 300.0f, 300.0f, m_subDivideCount);
 
     m_faceTrees = geoInfo->faceTrees;
     for (FaceTree* faceTree : m_faceTrees)
@@ -926,7 +892,7 @@ void Game::CreateDeviceDependentResources()
         resourceUpload.Begin();
 
         DX::ThrowIfFailed(
-            CreateStaticBuffer(device, resourceUpload, staticVertexData, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, &m_staticVB)
+            CreateStaticBuffer(device, resourceUpload, staticVertexData, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, m_staticVB.ReleaseAndGetAddressOf())
         );
 
         auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
@@ -936,42 +902,6 @@ void Game::CreateDeviceDependentResources()
         m_staticVBV.BufferLocation = m_staticVB->GetGPUVirtualAddress();
         m_staticVBV.StrideInBytes = sizeof(VertexTess);
         m_staticVBV.SizeInBytes = m_staticVBSize;
-    }
-
-    // Create vertex buffer (debug)
-    {
-        ResourceUploadBatch resourceUpload(device);
-        resourceUpload.Begin();
-
-        DX::ThrowIfFailed(
-            CreateStaticBuffer(device, resourceUpload, m_debugVertexData, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, &m_debugVB)
-        );
-
-        auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
-        uploadResourcesFinished.wait();
-
-        // Initialize the vertex buffer view.
-        m_debugVBV.BufferLocation = m_debugVB->GetGPUVirtualAddress();
-        m_debugVBV.StrideInBytes = sizeof(VertexPosition);
-        m_debugVBV.SizeInBytes = static_cast<UINT>(sizeof(VertexPosition) * m_debugVertexData.size());
-    }
-
-    // Create index buffer (debug)
-    {
-        ResourceUploadBatch resourceUpload(device);
-        resourceUpload.Begin();
-
-        DX::ThrowIfFailed(
-            CreateStaticBuffer(device, resourceUpload, m_debugIndexData, D3D12_RESOURCE_STATE_INDEX_BUFFER, &m_debugIB)
-        );
-
-        auto uploadResourcesFinished = resourceUpload.End(m_deviceResources->GetCommandQueue());
-        uploadResourcesFinished.wait();
-
-        // Initialize the vertex buffer view.
-        m_debugIBV.BufferLocation = m_debugIB->GetGPUVirtualAddress();
-        m_debugIBV.Format = DXGI_FORMAT_R32_UINT;
-        m_debugIBV.SizeInBytes = static_cast<UINT>(sizeof(uint32_t) * m_debugIndexData.size());
     }
 
     // Wait until assets have been uploaded to the GPU.
@@ -988,7 +918,7 @@ void Game::CreateDeviceDependentResources()
     m_camUp = DEFAULT_UP_VECTOR;
     m_camForward = DEFAULT_FORWARD_VECTOR;
     m_camRight = DEFAULT_RIGHT_VECTOR;
-    m_camYaw = -6.2f;
+    m_camYaw = 0.0f;
     m_camPitch = 0.0f;
     m_camPosition = XMVectorSet(0.0f, 0.0f, -500.0f, 0.0f);
     m_camLookTarget = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
@@ -996,7 +926,8 @@ void Game::CreateDeviceDependentResources()
     m_worldMatrix = XMMatrixIdentity();
     m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, DEFAULT_UP_VECTOR);
 
-    m_lightDirection = XMVectorSet(-1.0f, 0.0f, 0.0f, 1.0f);
+    m_lightDirection = XMVectorSet(1.0f, 0.0f, 0.0f, 1.0f);
+    m_lightDirection = XMVector3TransformCoord(m_lightDirection, XMMatrixRotationY(3.0f));
 
     m_quadWidth = 300.0f / pow(2.0f, TESS_GROUP_QUAD_LEVEL);
     m_unitCount = pow(2.0f, m_subDivideCount - TESS_GROUP_QUAD_LEVEL);
@@ -1041,9 +972,6 @@ void Game::OnDeviceLost()
     m_shadowPSO.Reset();
 
 	m_staticVB.Reset();
-
-    m_debugVB.Reset();
-    m_debugIB.Reset();
 
     m_cbUploadHeap.Reset();
     m_cbMappedData = nullptr;

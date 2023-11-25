@@ -127,17 +127,17 @@ PS_OUTPUT PS(DS_OUT input)
     float3 diffuse = saturate(dot(normal, -cb.lightDirection.xyz)) * cb.lightColor.xyz;
     float3 ambient = float3(0.008f, 0.008f, 0.008f) * cb.lightColor.xyz;
 
-    float lowNoise = lerp(0.95f, 1.0f, noise(sTexCoord * 30000.0f));
-    float highNoise = lerp(0.92f, 1.0f, noise(sTexCoord * 80000.0f));
+    float highNoise = lerp(0.92f, 1.0f, noise(sTexCoord * 60000.0f));
 
     float h = distance(input.catPos, float3(0, 0, 0));
-    h -= 149.0f;
+    h -= 140.0f;
+    h /= 20;
 
     float4 final = float4(
         saturate((diffuse + ambient)
-            * texColor.rgb
-            * lowNoise * highNoise
-            * lerp(0.98f, 1.0f, h)), 1);
+        * texColor.rgb
+        * highNoise
+        * lerp(0.9f, 1.0f, h)), 1);
 
     output.color = final;
 

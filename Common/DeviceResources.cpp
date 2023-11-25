@@ -357,14 +357,6 @@ void DeviceResources::CreateWindowSizeDependentResources()
         // This class does not support exclusive full-screen mode and prevents DXGI from responding to the ALT+ENTER shortcut
         ThrowIfFailed(m_dxgiFactory->MakeWindowAssociation(m_window, DXGI_MWA_NO_ALT_ENTER));
         ThrowIfFailed(m_swapChain->SetFullscreenState(TRUE, NULL));
-
-        m_swapChain->ResizeBuffers(
-			m_backBufferCount,
-			backBufferWidth,
-			backBufferHeight,
-			backBufferFormat,
-            m_options
-			);
     }
 
     // Handle color space settings for HDR
@@ -510,16 +502,6 @@ void DeviceResources::HandleDeviceLost()
     m_swapChain.Reset();
     m_d3dDevice.Reset();
     m_dxgiFactory.Reset();
-
-#if defined(_DEBUG) && !defined(__MINGW32__)
-    {
-        ComPtr<IDXGIDebug1> dxgiDebug;
-        if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgiDebug))))
-        {
-            dxgiDebug->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_FLAGS(DXGI_DEBUG_RLO_SUMMARY | DXGI_DEBUG_RLO_IGNORE_INTERNAL));
-        }
-    }
-#endif
 
     CreateDeviceResources();
     CreateWindowSizeDependentResources();

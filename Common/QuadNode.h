@@ -6,8 +6,6 @@
 #include <DirectXCollision.h>
 #include <SimpleMath.h>
 
-#include "VertexTypes.h"
-
 struct VertexTess
 {
 	DirectX::XMFLOAT3	position;
@@ -27,15 +25,11 @@ public:
 	void CreateChildren(
 		const char limit,
 		std::vector<VertexTess>& vertices,
-		const std::vector<uint32_t>& indices,
-		std::vector<DirectX::VertexPosition>& debugVertexData,
-		std::vector<uint32_t>& debugIndexData);
+		const std::vector<uint32_t>& indices);
 
 	void CalcCenter(
 		std::vector<VertexTess>& vertices,
-		const std::vector<uint32_t>& indices,
-		std::vector<DirectX::VertexPosition>& debugVertexData,
-		std::vector<uint32_t>& debugIndexData);
+		const std::vector<uint32_t>& indices);
 
 	void Render(
 		IN DirectX::BoundingFrustum& frustum, IN const std::vector<uint32_t>& indices,

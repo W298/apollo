@@ -34,24 +34,6 @@ LPCWSTR g_szAppName = L"apollo";
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 void ExitGame() noexcept;
 
-#ifdef _DEBUG
-void CheckMemoryLeak()
-{
-    HMODULE dxgidebugdll = GetModuleHandleW(L"dxgidebug.dll");
-    decltype(&DXGIGetDebugInterface) GetDebugInterface = reinterpret_cast<decltype(&DXGIGetDebugInterface)>(GetProcAddress(dxgidebugdll, "DXGIGetDebugInterface"));
-
-    IDXGIDebug* debug;
-
-    GetDebugInterface(IID_PPV_ARGS(&debug));
-
-    OutputDebugStringW(L"Direct3D Object ref count Leak\r\n");
-    debug->ReportLiveObjects(DXGI_DEBUG_D3D12, DXGI_DEBUG_RLO_DETAIL);
-    OutputDebugStringW(L"\r\n");
-
-    debug->Release();
-}
-#endif
-
 // Entry point
 int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
 {
@@ -143,10 +125,6 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
     }
 
     g_game.reset();
-
-#ifdef _DEBUG
-    CheckMemoryLeak();
-#endif
 
     return static_cast<int>(msg.wParam);
 }
