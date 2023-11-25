@@ -71,7 +71,7 @@ VS_OUTPUT VS(VS_INPUT input)
 //--------------------------------------------------------------------------------------
 // Constant Hull Shader
 //--------------------------------------------------------------------------------------
-static const float near = 20.0f;
+static const float near = 10.0f;
 static const float far = 150.0f;
 
 // Calc tess factor based on distance between camera.
@@ -82,7 +82,7 @@ float CalcTessFactor(float3 planePos)
     float d = distance(spherePos, cb.cameraPosition.xyz);
     float s = saturate((d - near) / (far - near));
 
-    return pow(2.0f, (int) (-8 * pow(s, 0.25f) + 8));
+    return pow(2.0f, (int) (-8 * pow(s, 0.8f) + 8));
 }
 
 PatchTess ConstantHS(InputPatch<VS_OUTPUT, 4> patch, int patchID : SV_PrimitiveID)
@@ -183,22 +183,11 @@ PatchTess ConstantHS(InputPatch<VS_OUTPUT, 4> patch, int patchID : SV_PrimitiveI
         float y1 = dot(patch[1].position, up);
         uint rotation = (x0 == x1) ? (y0 < y1 ? 0 : 2) : (x0 < x1 ? 1 : 3);
 
-        // Rotate border and estTess based on rotation factor.
-        bool borderTmp[4] = border;
-        float estTessTemp[4] = estTess;
-
-    	[unroll(4)]
-        for (int j = 0; j < 4; ++j)
-        {
-            border[j] = borderTmp[(j + rotation) % 4];
-            estTess[j] = estTessTemp[(j + rotation) % 4];
-        }
-
         // Set tess factor.
         [unroll(4)]
         for (int i = 0; i < 4; i++)
         {
-            output.edgeTess[i] = border[i] ? min(estTess[i], tess) : tess;
+            output.edgeTess[i] = border[(i + rotation) % 4] ? min(estTess[(i + rotation) % 4], tess) : tess;
         }
         output.insideTess[0] = tess;
         output.insideTess[1] = tess;

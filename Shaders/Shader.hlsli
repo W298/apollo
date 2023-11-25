@@ -64,6 +64,7 @@ struct PS_OUTPUT
 Texture2D texMap[5] : register(t0);
 SamplerState samAnisotropic : register(s0);
 SamplerComparisonState samShadow : register(s1);
+SamplerState anisotropicClampMip1 : register(s2);
 
 
 //--------------------------------------------------------------------------------------
@@ -82,7 +83,7 @@ VS_OUTPUT VS(VS_INPUT input)
 //--------------------------------------------------------------------------------------
 // Constant Hull Shader
 //--------------------------------------------------------------------------------------
-static const float near = 20.0f;
+static const float near = 10.0f;
 static const float far = 150.0f;
 
 // Calc tess factor based on distance between camera.
@@ -93,7 +94,7 @@ float CalcTessFactor(float3 planePos)
     float d = distance(spherePos, cb.cameraPosition.xyz);
     float s = saturate((d - near) / (far - near));
 
-    return pow(2.0f, (int)(-8 * pow(s, 0.25f) + 8));
+    return pow(2.0f, (int)(-8 * pow(s, 0.8f) + 8));
 }
 
 PatchTess ConstantHS(InputPatch<VS_OUTPUT, 4> patch, int patchID : SV_PrimitiveID)
@@ -194,22 +195,11 @@ PatchTess ConstantHS(InputPatch<VS_OUTPUT, 4> patch, int patchID : SV_PrimitiveI
         float y1 = dot(patch[1].position, up);
         uint rotation = (x0 == x1) ? (y0 < y1 ? 0 : 2) : (x0 < x1 ? 1 : 3);
 
-        // Rotate border and estTess based on rotation factor.
-        bool borderTmp[4] = border;
-        float estTessTemp[4] = estTess;
-
-    	[unroll(4)]
-        for (int j = 0; j < 4; ++j)
-        {
-            border[j] = borderTmp[(j + rotation) % 4];
-            estTess[j] = estTessTemp[(j + rotation) % 4];
-        }
-
         // Set tess factor.
         [unroll(4)]
         for (int i = 0; i < 4; i++)
         {
-            output.edgeTess[i] = border[i] ? min(estTess[i], tess) : tess;
+            output.edgeTess[i] = border[(i + rotation) % 4] ? min(estTess[(i + rotation) % 4], tess) : tess;
         }
         output.insideTess[0] = tess;
         output.insideTess[1] = tess;
@@ -314,39 +304,32 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
 //--------------------------------------------------------------------------------------
 // Pixel Shader
 //--------------------------------------------------------------------------------------
-static const float2 size = { 2.0, 0.0 };
-static const float3 off = { -1.0, 0.0, 1.0 };
-
 float3 GetNormalFromHeight(Texture2D tex, float2 texSize, float2 sTexCoord, float multiplier)
 {
-    float2 offxy = { off.x / texSize.x, off.y / texSize.y };
-    float2 offzy = { off.z / texSize.x, off.y / texSize.y };
-    float2 offyx = { off.y / texSize.x, off.x / texSize.y };
-    float2 offyz = { off.y / texSize.x, off.z / texSize.y };
+    float2 xmOffset = { -1.0f / texSize.x, 0 };
+    float2 xpOffset = { +1.0f / texSize.y, 0 };
+    float2 ymOffset = { 0, -1.0f / texSize.x };
+    float2 ypOffset = { 0, +1.0f / texSize.y };
 
-    float a = tex.Sample(samAnisotropic, sTexCoord + offxy * multiplier).r;
-    float b = tex.Sample(samAnisotropic, sTexCoord + offzy * multiplier).r;
-    float c = tex.Sample(samAnisotropic, sTexCoord + offyx * multiplier).r;
-    float d = tex.Sample(samAnisotropic, sTexCoord + offyz * multiplier).r;
+    float xm = tex.Sample(anisotropicClampMip1, sTexCoord + xmOffset * multiplier).r;
+    float xp = tex.Sample(anisotropicClampMip1, sTexCoord + xpOffset * multiplier).r;
+    float ym = tex.Sample(anisotropicClampMip1, sTexCoord + ymOffset * multiplier).r;
+    float yp = tex.Sample(anisotropicClampMip1, sTexCoord + ypOffset * multiplier).r;
 
-    float3 va = normalize(float3(size.xy, (b - a) * 0.5f));
-    float3 vb = normalize(float3(size.yx, (d - c) * 0.5f));
+    float3 va = normalize(float3(1.0f, 0, (xp - xm)));
+    float3 vb = normalize(float3(0, 1.0f, (yp - ym)));
 
     return normalize(cross(va, vb));
 }
 
-float3 GetTBNNormal(Texture2D tex, float2 sTexCoord, float3x3 TBN, float2 offset)
+float3 GetTBNNormal(Texture2D tex, float2 sTexCoord, float3x3 TBN)
 {
     uint width, height, numMips;
     tex.GetDimensions(0, width, height, numMips);
     float2 texSize = float2(width, height);
 
 	// Calculate local normal from height map.
-    float3 n1 = GetNormalFromHeight(tex, texSize, sTexCoord + offset, 1.0f);
-    float3 n2 = GetNormalFromHeight(tex, texSize, sTexCoord + offset, 2.0f);
-    float3 n3 = GetNormalFromHeight(tex, texSize, sTexCoord + offset, 3.0f);
-
-    float3 localNormal = (n1 * 3.0f + n2 * 2.0f + n3 * 1.0f) / 6.0f;
+    float3 localNormal = GetNormalFromHeight(tex, texSize, sTexCoord, 1.0f);
     localNormal = normalize(localNormal);
 
     return normalize(mul(localNormal, TBN));
@@ -429,7 +412,7 @@ PS_OUTPUT PS(DS_OUT input)
 
     // Merge Results.
     float4 texColor = texMap[texIndex].Sample(samAnisotropic, sTexCoord);
-    float3 normal = GetTBNNormal(texMap[texIndex + 2], sTexCoord, TBN, float2(0, 0));
+    float3 normal = GetTBNNormal(texMap[texIndex + 2], sTexCoord, TBN);
     
     float3 diffuse = saturate(dot(normal, -cb.lightDirection.xyz)) * cb.lightColor.xyz;
     float3 ambient = float3(0.008f, 0.008f, 0.008f) * cb.lightColor.xyz;
@@ -437,14 +420,18 @@ PS_OUTPUT PS(DS_OUT input)
     float shadowFactor = CalcShadowFactor(mul(float4(input.catPos, 1.0f), cb.shadowTransform));
     float shadowCorrector = lerp(0.7f, 1.0f, max(dot(normCatPos, -cb.lightDirection.xyz), 0.0f));
 
-    float noise1 = noise(sTexCoord * 30000.0f);
-    float noise2 = noise(sTexCoord * 60000.0f);
+    float lowNoise = lerp(0.95f, 1.0f, noise(sTexCoord * 30000.0f));
+    float highNoise = lerp(0.92f, 1.0f, noise(sTexCoord * 80000.0f));
 
     float h = distance(input.catPos, float3(0, 0, 0));
-    h -= 150.0f;
+    h -= 149.0f;
 
-    float4 final = float4(saturate((diffuse * saturate(shadowFactor + shadowCorrector) + ambient) * texColor.rgb * lerp(0.95f, 1.0f, noise1) * lerp(0.92f, 1.0f, noise2) * lerp(0.98f, 1.0f, h)), texColor.a);
-    final.a = 1;
+    float4 final = float4(
+		saturate((diffuse * saturate(shadowFactor + shadowCorrector) + ambient) 
+		* texColor.rgb 
+		* lowNoise * highNoise 
+		* lerp(0.98f, 1.0f, h)), 1);
+
     output.color = final;
 
     return output;

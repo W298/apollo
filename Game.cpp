@@ -159,7 +159,7 @@ void Game::Update(DX::StepTimer const& timer)
             m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, m_camUp);
 
             // Manipulate shadow bias using scroll value.
-            m_shadowBias += (mouse.scrollWheelValue - m_scrollWheelValue) * elapsedTime / 1000.0f;
+            m_shadowBias += (mouse.scrollWheelValue - m_scrollWheelValue) * elapsedTime / 10.0f;
             m_scrollWheelValue = static_cast<float>(mouse.scrollWheelValue);
         }
 
@@ -591,9 +591,9 @@ void Game::CreateDeviceDependentResources()
             D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK
         );
 
-        const CD3DX12_STATIC_SAMPLER_DESC linearClamp(
+        const CD3DX12_STATIC_SAMPLER_DESC anisotropicClampMip1(
             2,                                                  // shaderRegister
-            D3D12_FILTER_MIN_MAG_MIP_LINEAR,                    // filter
+            D3D12_FILTER_ANISOTROPIC,                           // filter
             D3D12_TEXTURE_ADDRESS_MODE_CLAMP,                   // addressU
             D3D12_TEXTURE_ADDRESS_MODE_CLAMP,                   // addressV
             D3D12_TEXTURE_ADDRESS_MODE_CLAMP,                   // addressW
@@ -601,11 +601,11 @@ void Game::CreateDeviceDependentResources()
             16,                                                 // maxAnisotropy
             D3D12_COMPARISON_FUNC_LESS_EQUAL,
             D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE,
-            0.0f,                                               // minLOD
+            1,                                                  // minLOD
             D3D12_FLOAT32_MAX                                   // maxLOD
         );
 
-        std::array<const CD3DX12_STATIC_SAMPLER_DESC, 3> staticSamplers = { anisotropicClamp, shadow, linearClamp };
+        std::array<const CD3DX12_STATIC_SAMPLER_DESC, 3> staticSamplers = { anisotropicClamp, shadow, anisotropicClampMip1 };
 
         D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags =
             D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
