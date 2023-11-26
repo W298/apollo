@@ -140,7 +140,7 @@ void Game::Update(DX::StepTimer const& timer)
         m_camLookTarget = m_camPosition + m_camLookTarget;
         m_viewMatrix = XMMatrixLookAtLH(m_camPosition, m_camLookTarget, m_camUp);
 
-        m_camMoveSpeed += (mouse.scrollWheelValue - m_scrollWheelValue) * elapsedTime * 50;
+        m_camMoveSpeed += (mouse.scrollWheelValue - m_scrollWheelValue) * 0.05f;
         m_scrollWheelValue = static_cast<float>(mouse.scrollWheelValue);
 
         // Do frustum culling

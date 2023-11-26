@@ -104,35 +104,20 @@ PatchTess ConstantHS(InputPatch<VS_OUTPUT, 4> patch, int patchID : SV_PrimitiveI
     float3 up;
 
     // Face detection.
-    if (abs(planeQuadPos.z + 150.0f) <= 0.001f)
+    if (abs(abs(planeQuadPos.z) - 150.0f) <= 0.001f)
     {
-        right = float3(1, 0, 0);
+        right = float3(-sign(planeQuadPos.z), 0, 0);
         up = float3(0, 1, 0);
     }
-    else if (abs(planeQuadPos.z - 150.0f) <= 0.001f)
+    else if (abs(abs(planeQuadPos.x) - 150.0f) <= 0.001f)
     {
-        right = float3(-1, 0, 0);
+        right = float3(0, 0, sign(planeQuadPos.x));
         up = float3(0, 1, 0);
-    }
-    else if (abs(planeQuadPos.x + 150.0f) <= 0.001f)
-    {
-        right = float3(0, 0, -1);
-        up = float3(0, 1, 0);
-    }
-    else if (abs(planeQuadPos.x - 150.0f) <= 0.001f)
-    {
-        right = float3(0, 0, 1);
-        up = float3(0, 1, 0);
-    }
-    else if (abs(planeQuadPos.y + 150.0f) <= 0.001f)
-    {
-        right = float3(1, 0, 0);
-        up = float3(0, 0, -1);
     }
     else
     {
         right = float3(1, 0, 0);
-        up = float3(0, 0, 1);
+        up = float3(0, 0, sign(planeQuadPos.y));
     }
 
     // Check patch is on border or not.
@@ -154,6 +139,13 @@ PatchTess ConstantHS(InputPatch<VS_OUTPUT, 4> patch, int patchID : SV_PrimitiveI
         return output;
     }
 
+    // Calc rotation of patch.
+    float x0 = dot(patch[0].position.xyz, right);
+    float y0 = dot(patch[0].position.xyz, up);
+    float x1 = dot(patch[1].position.xyz, right);
+    float y1 = dot(patch[1].position.xyz, up);
+    uint rotation = (x0 == x1) ? (y0 < y1 ? 0 : 2) : (x0 < x1 ? 1 : 3);
+
     // Check which border is on.
     bool border[4] =
     {
@@ -172,18 +164,23 @@ PatchTess ConstantHS(InputPatch<VS_OUTPUT, 4> patch, int patchID : SV_PrimitiveI
     	CalcTessFactor(planeQuadPos + right * width)
     };
 
-	// Calc rotation of patch.
-    float x0 = dot(patch[0].position.xyz, right);
-    float y0 = dot(patch[0].position.xyz, up);
-    float x1 = dot(patch[1].position.xyz, right);
-    float y1 = dot(patch[1].position.xyz, up);
-    uint rotation = (x0 == x1) ? (y0 < y1 ? 0 : 2) : (x0 < x1 ? 1 : 3);
+    // Check quad is on borer or not.
+    bool quadBorder[4] =
+    {
+        border[0] && planeQuadPosU - width < -150.0f,
+        border[1] && planeQuadPosR - width < -150.0f,
+        border[2] && planeQuadPosU + width > 150.0f,
+        border[3] && planeQuadPosR + width > 150.0f
+    };
 
 	// Set tess factor.
 	[unroll(4)]
     for (int i = 0; i < 4; i++)
     {
-        output.edgeTess[i] = border[(i + rotation) % 4] ? min(estTess[(i + rotation) % 4], tess) : tess;
+        if (quadBorder[(i + rotation) % 4])
+            output.edgeTess[i] = CalcTessFactor(patch[0].position);
+        else
+            output.edgeTess[i] = border[(i + rotation) % 4] ? min(estTess[(i + rotation) % 4], tess) : tess;
     }
     output.insideTess[0] = tess;
     output.insideTess[1] = tess;
