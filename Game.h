@@ -61,6 +61,7 @@ private:
         DirectX::XMMATRIX   lightViewProjMatrix;
         DirectX::XMVECTOR   cameraPosition;
         DirectX::XMFLOAT4   parameters;
+        uint8_t             padding[88];
     };
 
     void Update(DX::StepTimer const& timer);
