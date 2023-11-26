@@ -66,6 +66,9 @@
     <ClInclude Include="Common\imgui\imgui_impl_win32.h">
       <Filter>Common\imgui</Filter>
     </ClInclude>
+    <ClInclude Include="Common\ShadowMap.h">
+      <Filter>Common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp" />
@@ -75,12 +78,6 @@
       <Filter>Common</Filter>
     </ClCompile>
     <ClCompile Include="Common\QuadSphereGenerator.cpp">
-      <Filter>Common</Filter>
-    </ClCompile>
-    <ClCompile Include="ShadowMap.h">
-      <Filter>Common</Filter>
-    </ClCompile>
-    <ClCompile Include="ShadowMap.cpp">
       <Filter>Common</Filter>
     </ClCompile>
     <ClCompile Include="Common\FaceTree.cpp">
@@ -109,6 +106,9 @@
     </ClCompile>
     <ClCompile Include="Common\imgui\imgui_impl_win32.cpp">
       <Filter>Common\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="Common\ShadowMap.cpp">
+      <Filter>Common</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
