@@ -56,6 +56,7 @@ void Game::Initialize(HWND window, int width, int height, UINT subDivideCount)
     m_deviceResources->SetWindow(window, width, height);
     m_width = width;
     m_height = height;
+    m_aspectRatio = static_cast<float>(width) / static_cast<float>(height);
 
     m_deviceResources->CreateDeviceResources();
     CreateDeviceDependentResources();
@@ -117,7 +118,7 @@ void Game::Update(DX::StepTimer const& timer)
             {
                 // Handle mouse input.
                 m_camYaw += mouse.x * 0.001f * m_camRotateSpeed;
-                m_camPitch += mouse.y * 0.001f * m_camRotateSpeed;
+                m_camPitch = std::min(std::max(m_camPitch + mouse.y * 0.001f * m_camRotateSpeed, -XM_PIDIV2), XM_PIDIV2);
             }
         }
 
@@ -147,10 +148,13 @@ void Game::Update(DX::StepTimer const& timer)
         {
             PIXBeginEvent(PIX_COLOR_DEFAULT, L"Frustum Culling");
 
+            // Update projection matrix
+            m_projectionMatrix = XMMatrixPerspectiveFovLH(XM_PIDIV4, m_aspectRatio, 0.01f, XMVector3Length(m_camPosition).m128_f32[0]);
+
             // Update frustum
             BoundingFrustum bf;
             auto det = XMMatrixDeterminant(m_viewMatrix);
-            m_boundingFrustum.Transform(bf, XMMatrixInverse(&det, m_viewMatrix));
+            BoundingFrustum(m_projectionMatrix).Transform(bf, XMMatrixInverse(&det, m_viewMatrix));
 
             m_culledQuadCount = 0;
             for (int i = 0; i < 6; i++)
@@ -947,13 +951,11 @@ void Game::CreateDeviceDependentResources()
 // Allocate all memory resources that change on a window SizeChanged event.
 void Game::CreateWindowSizeDependentResources()
 {
-    // Initialize the projection matrix
-    auto size = m_deviceResources->GetOutputSize();
-    m_projectionMatrix = XMMatrixPerspectiveFovLH(
-        XM_PIDIV4, float(size.right) / float(size.bottom), 0.01f, 1000.0f);
+    const auto size = m_deviceResources->GetOutputSize();
 
-    // Construct Frustum
-    m_boundingFrustum = BoundingFrustum(m_projectionMatrix);
+	m_width = size.right;
+    m_height = size.bottom;
+    m_aspectRatio = static_cast<float>(m_width) / static_cast<float>(m_height);
 
     // The frame index will be reset to zero when the window size changes
     // So we need to tell the GPU to signal our fence starting with zero

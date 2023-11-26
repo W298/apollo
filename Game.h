@@ -117,6 +117,7 @@ private:
     // Resolution
     UINT											m_width;
     UINT											m_height;
+    float											m_aspectRatio;
 
     // Number of draw calls
     static const unsigned int                       c_numDrawCalls = 2;
@@ -172,9 +173,6 @@ private:
     // Shadow
     std::unique_ptr<ShadowMap>  			        m_shadowMap;
     DirectX::BoundingSphere                         m_sceneBounds;
-
-    // Frustum
-    DirectX::BoundingFrustum						m_boundingFrustum;
 
     // QuadTree instances
     std::vector<FaceTree*>                          m_faceTrees;
