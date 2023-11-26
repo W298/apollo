@@ -33,20 +33,19 @@ private:
 	void BuildResource();
 
 private:
+	ID3D12Device* m_device = nullptr;
 
-	ID3D12Device* md3dDevice = nullptr;
+	D3D12_VIEWPORT m_viewport;
+	D3D12_RECT m_scissorRect;
 
-	D3D12_VIEWPORT mViewport;
-	D3D12_RECT mScissorRect;
+	UINT m_width = 0;
+	UINT m_height = 0;
+	DXGI_FORMAT m_format = DXGI_FORMAT_R32_TYPELESS;
 
-	UINT mWidth = 0;
-	UINT mHeight = 0;
-	DXGI_FORMAT mFormat = DXGI_FORMAT_R32_TYPELESS;
+	CD3DX12_CPU_DESCRIPTOR_HANDLE m_srvHandleCPU;
+	CD3DX12_GPU_DESCRIPTOR_HANDLE m_srvHandleGPU;
+	CD3DX12_CPU_DESCRIPTOR_HANDLE m_dsvHandleCPU;
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE mhCpuSrv;
-	CD3DX12_GPU_DESCRIPTOR_HANDLE mhGpuSrv;
-	CD3DX12_CPU_DESCRIPTOR_HANDLE mhCpuDsv;
-
-	Microsoft::WRL::ComPtr<ID3D12Resource> mShadowMap = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12Resource> m_shadowMapResource = nullptr;
 };
 

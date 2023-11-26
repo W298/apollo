@@ -14,8 +14,8 @@
 #include "ReadData.h"
 #include "ResourceUploadBatch.h"
 
-#include "../Common/imgui/imgui_impl_win32.h"
-#include "../Common/imgui/imgui_impl_dx12.h"
+#include "imgui_impl_win32.h"
+#include "imgui_impl_dx12.h"
 
 extern void ExitGame() noexcept;
 
@@ -54,6 +54,8 @@ void Game::Initialize(HWND window, int width, int height, UINT subDivideCount)
     m_subDivideCount = subDivideCount;
 
     m_deviceResources->SetWindow(window, width, height);
+    m_width = width;
+    m_height = height;
 
     m_deviceResources->CreateDeviceResources();
     CreateDeviceDependentResources();
@@ -66,13 +68,6 @@ void Game::Initialize(HWND window, int width, int height, UINT subDivideCount)
     {
 	    throw std::exception("CreateEvent");
     }
-
-    // TODO: Change the timer settings if you want something other than the default variable timestep mode.
-    // e.g. for 60 FPS fixed timestep update logic, call:
-    /*
-    m_timer.SetFixedTimeStep(true);
-    m_timer.SetTargetElapsedSeconds(1.0 / 60);
-    */
 }
 
 #pragma region Frame Update
@@ -121,8 +116,8 @@ void Game::Update(DX::StepTimer const& timer)
         	if (mouse.x + mouse.y <= 1000)
             {
                 // Handle mouse input.
-                m_camYaw += mouse.x * elapsedTime * m_camRotateSpeed;
-                m_camPitch += mouse.y * elapsedTime * m_camRotateSpeed;
+                m_camYaw += mouse.x * 0.001f * m_camRotateSpeed;
+                m_camPitch += mouse.y * 0.001f * m_camRotateSpeed;
             }
         }
 
@@ -257,9 +252,6 @@ void Game::Render()
 
     PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Render");
 
-    // Index into the available constant buffers based on the number
-    // of draw calls. We've allocated enough for a known number of
-    // draw calls per frame times the number of back buffers
     unsigned int cbIndex = c_numDrawCalls * (frameIdx % numBackBuffers);
 
     // Set the root signature and pipeline state.
@@ -396,23 +388,31 @@ void Game::Render()
         ImGui::NewFrame();
 
         {
+            const auto io = ImGui::GetIO();
             ImGui::Begin("apollo");
 
-            const auto io = ImGui::GetIO();
-
+            ImGui::Text("%d x %d", m_width, m_height);
             ImGui::TextColored(ImVec4(1, 1, 0, 1), "%.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
 
             ImGui::Dummy(ImVec2(0.0f, 20.0f));
 
-            ImGui::Text("Subdivision count: %d", m_subDivideCount);
-            ImGui::Text("Total quad count: %d", m_totalIndexCount / 4);
-        	ImGui::Text("Render quad count: %d", (m_totalIndexCount - m_culledQuadCount) / 4);
+            ImGui::Text("Before Tessellation (Input of VS)");
+            ImGui::BulletText("Subdivision count: %d", m_subDivideCount);
+
+            ImGui::Dummy(ImVec2(0.0f, 5.0f));
+
+            ImGui::BulletText("QuadSphere entire quad count: %d", m_totalIndexCount / 4);
+            ImGui::BulletText("QuadSphere entire triangle count: %d", m_totalIndexCount * 2 / 4);
+
+            ImGui::Dummy(ImVec2(0.0f, 5.0f));
+
+        	ImGui::BulletText("Render quad count: %d", (m_totalIndexCount - m_culledQuadCount) / 4);
+            ImGui::BulletText("Render triangle count: %d", (m_totalIndexCount - m_culledQuadCount) * 2 / 4);
 
             ImGui::Dummy(ImVec2(0.0f, 10.0f));
 
-            ImGui::Text("Culled quad count: %d (%.3f %% of Total)",
+            ImGui::BulletText("Culled quad count: %d (%.3f %% of Total)",
                 m_culledQuadCount, static_cast<float>(m_culledQuadCount) * 100 / (m_totalIndexCount / 4));
-            ImGui::Text("(By view frustum culling)");
 
             ImGui::Dummy(ImVec2(0.0f, 20.0f));
 
@@ -427,7 +427,18 @@ void Game::Render()
 
             ImGui::Dummy(ImVec2(0.0f, 20.0f));
 
+            if (ImGui::Button("Reset Camera"))
+            {
+                m_camYaw = 0.0f;
+                m_camPitch = 0.0f;
+                m_camPosition = XMVectorSet(0.0f, 0.0f, -500.0f, 0.0f);
+                m_camLookTarget = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+            }
+
+            ImGui::Dummy(ImVec2(0.0f, 20.0f));
+
             ImGui::Text("Press X to Switch mouse mode");
+            ImGui::Text("(GUI Mode <-> Flight Mode)");
 
             ImGui::End();
         }

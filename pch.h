@@ -72,7 +72,6 @@
 #endif
 
 #include "shellapi.h"
-#include "DirectXCollision.h"
 #include "GraphicsMemory.h"
 
 namespace DX

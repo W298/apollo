@@ -4,7 +4,7 @@
 
 #include "pch.h"
 #include "Game.h"
-#include "../Common/ImGui/imgui_impl_win32.h"
+#include "imgui_impl_win32.h"
 
 using namespace DirectX;
 
@@ -74,16 +74,24 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         LPWSTR* szArglist = nullptr;
         int nArgs;
 
-        szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
-        if (szArglist == nullptr || nArgs < 1)
-        {
-            OutputDebugStringW(L"CommandLineToArgvW failed\n");
-            ExitGame();
-        }
+        UINT subDivideCount = 8u;
+        UINT width = GetSystemMetrics(SM_CXSCREEN);
+        UINT height = GetSystemMetrics(SM_CYSCREEN);
 
-        const UINT subDivideCount = std::min(9u, std::max(7u, static_cast<UINT>(std::stoi(szArglist[1]))));
-        const UINT width = std::max(1280u, static_cast<UINT>(std::stoi(szArglist[2])));
-        const UINT height = std::max(720u, static_cast<UINT>(std::stoi(szArglist[3])));
+        szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
+        if (szArglist == nullptr)
+			ExitGame();
+
+        if (1 < nArgs && nArgs < 4)
+        {
+            subDivideCount = std::min(9u, std::max(7u, static_cast<UINT>(std::stoi(szArglist[1]))));
+        }
+        else if (nArgs == 4)
+        {
+            subDivideCount = std::min(9u, std::max(7u, static_cast<UINT>(std::stoi(szArglist[1]))));
+            width = std::max(1280u, static_cast<UINT>(std::stoi(szArglist[2])));
+            height = std::max(720u, static_cast<UINT>(std::stoi(szArglist[3])));
+        }
 
         if (szArglist != nullptr)
             LocalFree(szArglist);
@@ -91,7 +99,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         // Create window
         RECT rc = { 0, 0, static_cast<LONG>(width), static_cast<LONG>(height) };
 
-        AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
+        AdjustWindowRect(&rc, WS_POPUP, FALSE);
 
         HWND hwnd = CreateWindowExW(WS_EX_TOPMOST, L"apolloWindowClass", g_szAppName, WS_POPUP,
             CW_USEDEFAULT, CW_USEDEFAULT, rc.right - rc.left, rc.bottom - rc.top,

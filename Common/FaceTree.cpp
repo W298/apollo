@@ -57,6 +57,7 @@ void FaceTree::Upload(DirectX::ResourceUploadBatch& upload, DirectX::GraphicsMem
 	memcpy(m_renderIB.Memory(), m_renderIndexData.data(), m_renderIBSize);
 	upload.Upload(m_staticIB.Get(), m_renderIB);
 	upload.Transition(m_staticIB.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+	m_renderIB.Reset();
 }
 
 void FaceTree::Draw(ID3D12GraphicsCommandList* commandList) const

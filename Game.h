@@ -10,7 +10,8 @@
 #include "Mouse.h"
 #include "ShadowMap.h"
 #include "StepTimer.h"
-#include "../Common/imgui/imgui.h"
+
+#include "imgui.h"
 
 class Game final : public DX::IDeviceNotify
 {
@@ -103,7 +104,7 @@ private:
     																	0.f, 0.f, 1.f, 0.f,
     																	0.f, 0.f, 0.f, 1.f };
 
-    // Device resources.
+	// Device resources.
     std::unique_ptr<DX::DeviceResources>            m_deviceResources;
 
     // Rendering loop timer.
@@ -112,6 +113,10 @@ private:
     // Input devices.
     std::unique_ptr<DirectX::Keyboard>              m_keyboard;
     std::unique_ptr<DirectX::Mouse>                 m_mouse;
+
+    // Resolution
+    UINT											m_width;
+    UINT											m_height;
 
     // Number of draw calls
     static const unsigned int                       c_numDrawCalls = 2;

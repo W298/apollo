@@ -76,6 +76,7 @@ DeviceResources::DeviceResources(
 // Destructor for DeviceResources.
 DeviceResources::~DeviceResources()
 {
+    ThrowIfFailed(m_swapChain->SetFullscreenState(FALSE, NULL));
     // Ensure that the GPU is no longer referencing resources that are about to be destroyed.
     WaitForGpu();
 }
@@ -357,6 +358,14 @@ void DeviceResources::CreateWindowSizeDependentResources()
         // This class does not support exclusive full-screen mode and prevents DXGI from responding to the ALT+ENTER shortcut
         ThrowIfFailed(m_dxgiFactory->MakeWindowAssociation(m_window, DXGI_MWA_NO_ALT_ENTER));
         ThrowIfFailed(m_swapChain->SetFullscreenState(TRUE, NULL));
+
+        ThrowIfFailed(m_swapChain->ResizeBuffers(
+            m_backBufferCount,
+            backBufferWidth,
+            backBufferHeight,
+            backBufferFormat,
+            m_options
+        ));
     }
 
     // Handle color space settings for HDR

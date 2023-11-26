@@ -3,50 +3,50 @@
 
 ShadowMap::ShadowMap(ID3D12Device* device, UINT width, UINT height)
 {
-	md3dDevice = device;
+	m_device = device;
 
-	mWidth = width;
-	mHeight = height;
+	m_width = width;
+	m_height = height;
 
-	mViewport = { 0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f };
-	mScissorRect = { 0, 0, (int)width, (int)height };
+	m_viewport = { 0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f };
+	m_scissorRect = { 0, 0, (int)width, (int)height };
 
 	BuildResource();
 }
 
 UINT ShadowMap::Width()const
 {
-	return mWidth;
+	return m_width;
 }
 
 UINT ShadowMap::Height()const
 {
-	return mHeight;
+	return m_height;
 }
 
 ID3D12Resource* ShadowMap::Resource()
 {
-	return mShadowMap.Get();
+	return m_shadowMapResource.Get();
 }
 
 CD3DX12_GPU_DESCRIPTOR_HANDLE ShadowMap::Srv()const
 {
-	return mhGpuSrv;
+	return m_srvHandleGPU;
 }
 
 CD3DX12_CPU_DESCRIPTOR_HANDLE ShadowMap::Dsv()const
 {
-	return mhCpuDsv;
+	return m_dsvHandleCPU;
 }
 
 D3D12_VIEWPORT ShadowMap::Viewport()const
 {
-	return mViewport;
+	return m_viewport;
 }
 
 D3D12_RECT ShadowMap::ScissorRect()const
 {
-	return mScissorRect;
+	return m_scissorRect;
 }
 
 void ShadowMap::BuildDescriptors(CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv,
@@ -54,9 +54,9 @@ void ShadowMap::BuildDescriptors(CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv,
 	CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuDsv)
 {
 	// Save references to the descriptors. 
-	mhCpuSrv = hCpuSrv;
-	mhGpuSrv = hGpuSrv;
-	mhCpuDsv = hCpuDsv;
+	m_srvHandleCPU = hCpuSrv;
+	m_srvHandleGPU = hGpuSrv;
+	m_dsvHandleCPU = hCpuDsv;
 
 	//  Create the descriptors
 	BuildDescriptors();
@@ -64,10 +64,10 @@ void ShadowMap::BuildDescriptors(CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv,
 
 void ShadowMap::OnResize(UINT newWidth, UINT newHeight)
 {
-	if ((mWidth != newWidth) || (mHeight != newHeight))
+	if ((m_width != newWidth) || (m_height != newHeight))
 	{
-		mWidth = newWidth;
-		mHeight = newHeight;
+		m_width = newWidth;
+		m_height = newHeight;
 
 		BuildResource();
 
@@ -87,7 +87,7 @@ void ShadowMap::BuildDescriptors()
 	srvDesc.Texture2D.MipLevels = 1;
 	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
 	srvDesc.Texture2D.PlaneSlice = 0;
-	md3dDevice->CreateShaderResourceView(mShadowMap.Get(), &srvDesc, mhCpuSrv);
+	m_device->CreateShaderResourceView(m_shadowMapResource.Get(), &srvDesc, m_srvHandleCPU);
 
 	// Create DSV to resource so we can render to the shadow map.
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc;
@@ -95,7 +95,7 @@ void ShadowMap::BuildDescriptors()
 	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 	dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
 	dsvDesc.Texture2D.MipSlice = 0;
-	md3dDevice->CreateDepthStencilView(mShadowMap.Get(), &dsvDesc, mhCpuDsv);
+	m_device->CreateDepthStencilView(m_shadowMapResource.Get(), &dsvDesc, m_dsvHandleCPU);
 }
 
 void ShadowMap::BuildResource()
@@ -104,11 +104,11 @@ void ShadowMap::BuildResource()
 	ZeroMemory(&texDesc, sizeof(D3D12_RESOURCE_DESC));
 	texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 	texDesc.Alignment = 0;
-	texDesc.Width = mWidth;
-	texDesc.Height = mHeight;
+	texDesc.Width = m_width;
+	texDesc.Height = m_height;
 	texDesc.DepthOrArraySize = 1;
 	texDesc.MipLevels = 1;
-	texDesc.Format = mFormat;
+	texDesc.Format = m_format;
 	texDesc.SampleDesc.Count = 1;
 	texDesc.SampleDesc.Quality = 0;
 	texDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
@@ -120,11 +120,11 @@ void ShadowMap::BuildResource()
 	optClear.DepthStencil.Stencil = 0;
 
 	auto h = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-	DX::ThrowIfFailed(md3dDevice->CreateCommittedResource(
+	DX::ThrowIfFailed(m_device->CreateCommittedResource(
 		&h,
 		D3D12_HEAP_FLAG_NONE,
 		&texDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		&optClear,
-		IID_PPV_ARGS(&mShadowMap)));
+		IID_PPV_ARGS(&m_shadowMapResource)));
 }
