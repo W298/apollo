@@ -169,7 +169,7 @@ void Game::Update(DX::StepTimer const& timer)
 
     // Light rotation update
     if (m_lightRotation)
-		m_lightDirection = XMVector3TransformCoord(m_lightDirection, XMMatrixRotationY(elapsedTime / 12.0f));
+		m_lightDirection = XMVector3TransformCoord(m_lightDirection, XMMatrixRotationY(elapsedTime / 26.0f));
 
     // Update Shadow Transform
     {
@@ -285,14 +285,12 @@ void Game::Render()
             cbShadow.lightWorldMatrix = XMMatrixTranspose(lightWorld);
             cbShadow.lightViewProjMatrix = XMMatrixTranspose(lightView * lightProj);
             cbShadow.cameraPosition = m_camPosition;
+            cbShadow.parameters = XMFLOAT4(m_quadWidth, m_unitCount, m_tessMin, m_tessMax - 2);
 
-            cbShadow.quadWidth = m_quadWidth;
-            cbShadow.unitCount = m_unitCount;
-
-            memcpy(&m_cbMappedDataShadow[cbIndex].constants, &cbShadow, sizeof(ShadowCB));
+            memcpy(&m_cbMappedDataShadow[cbIndex], &cbShadow, sizeof(ShadowCB));
 
             // Bind the constants to the shader.
-            const auto baseGpuAddress = m_cbGpuAddressShadow + sizeof(PaddedShadowCB) * cbIndex;
+            const auto baseGpuAddress = m_cbGpuAddressShadow + sizeof(ShadowCB) * cbIndex;
             commandList->SetGraphicsRootConstantBufferView(2, baseGpuAddress);
         }
 
@@ -356,14 +354,12 @@ void Game::Render()
         	cbOpaque.lightColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 
             cbOpaque.shadowTransform = XMMatrixTranspose(XMLoadFloat4x4(&m_shadowTransform));
+            cbOpaque.parameters = XMFLOAT4(m_quadWidth, m_unitCount, m_tessMin, m_tessMax);
 
-            cbOpaque.quadWidth = m_quadWidth;
-            cbOpaque.unitCount = m_unitCount;
-
-            memcpy(&m_cbMappedData[cbIndex].constants, &cbOpaque, sizeof(OpaqueCB));
+            memcpy(&m_cbMappedData[cbIndex], &cbOpaque, sizeof(OpaqueCB));
 
             // Bind the constants to the shader.
-            const auto baseGpuAddress = m_cbGpuAddress + sizeof(PaddedOpaqueCB) * cbIndex;
+            const auto baseGpuAddress = m_cbGpuAddress + sizeof(OpaqueCB) * cbIndex;
             commandList->SetGraphicsRootConstantBufferView(1, baseGpuAddress);
         }
 
@@ -394,6 +390,7 @@ void Game::Render()
         {
             const auto io = ImGui::GetIO();
             ImGui::Begin("apollo");
+            ImGui::SetWindowSize(ImVec2(450, 550), ImGuiCond_Always);
 
             ImGui::Text("%d x %d", m_width, m_height);
             ImGui::TextColored(ImVec4(1, 1, 0, 1), "%.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
@@ -405,23 +402,24 @@ void Game::Render()
 
             ImGui::Dummy(ImVec2(0.0f, 5.0f));
 
-            ImGui::BulletText("QuadSphere entire quad count: %d", m_totalIndexCount / 4);
-            ImGui::BulletText("QuadSphere entire triangle count: %d", m_totalIndexCount * 2 / 4);
+            ImGui::BulletText("QuadSphere initial quad count: %d", m_totalIndexCount / 4);
+            ImGui::BulletText("QuadSphere initial triangle count: %d (converted)", m_totalIndexCount * 2 / 4);
 
             ImGui::Dummy(ImVec2(0.0f, 5.0f));
 
         	ImGui::BulletText("Render quad count: %d", (m_totalIndexCount - m_culledQuadCount) / 4);
-            ImGui::BulletText("Render triangle count: %d", (m_totalIndexCount - m_culledQuadCount) * 2 / 4);
+            ImGui::BulletText("Render triangle count: %d (converted)", (m_totalIndexCount - m_culledQuadCount) * 2 / 4);
 
             ImGui::Dummy(ImVec2(0.0f, 10.0f));
 
-            ImGui::BulletText("Culled quad count: %d (%.3f %% of Total)",
+            ImGui::BulletText("Culled quad count: %d (%.3f %%)",
                 m_culledQuadCount, static_cast<float>(m_culledQuadCount) * 100 / (m_totalIndexCount / 4));
 
             ImGui::Dummy(ImVec2(0.0f, 20.0f));
 
-            ImGui::Text("Move speed: %.3f (Scroll to Adjust)", m_camMoveSpeed);
+            ImGui::SliderInt("Max Tess 2^n", &m_tessMax, 5, 8);
             ImGui::SliderFloat("Rotate speed", &m_camRotateSpeed, 0.0f, 1.0f);
+            ImGui::Text("Move speed: %.3f (Scroll to Adjust)", m_camMoveSpeed);
 
             ImGui::Dummy(ImVec2(0.0f, 20.0f));
 
@@ -764,7 +762,7 @@ void Game::CreateDeviceDependentResources()
     // Create the opaque constant buffer memory
     {
         CD3DX12_HEAP_PROPERTIES uploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
-        size_t const cbSize = c_numDrawCalls * m_deviceResources->GetBackBufferCount() * sizeof(PaddedOpaqueCB);
+        size_t const cbSize = c_numDrawCalls * m_deviceResources->GetBackBufferCount() * sizeof(OpaqueCB);
 
         CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(cbSize);
         DX::ThrowIfFailed(
@@ -784,7 +782,7 @@ void Game::CreateDeviceDependentResources()
     // Create the shadow constant buffer memory
     {
         CD3DX12_HEAP_PROPERTIES uploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
-        size_t const cbSize = c_numDrawCalls * m_deviceResources->GetBackBufferCount() * sizeof(PaddedShadowCB);
+        size_t const cbSize = c_numDrawCalls * m_deviceResources->GetBackBufferCount() * sizeof(ShadowCB);
 
         CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(cbSize);
         DX::ThrowIfFailed(

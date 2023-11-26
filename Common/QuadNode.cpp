@@ -55,14 +55,51 @@ void QuadNode::CalcCenter(
 	}
 	center /= 4.0f;
 
-	// Store center position on sphere
+	// Store quad center position on sphere
 	XMStoreFloat3(&m_centerPosition, center);
 
-	if (m_level == TESS_GROUP_QUAD_LEVEL)
+	if (m_level == QUAD_NODE_MAX_LEVEL)
 	{
-		for (uint32_t base = m_baseAddress; base < m_baseAddress + m_indexCount; base++)
+		if (QUAD_NODE_MAX_LEVEL == TESS_GROUP_QUAD_LEVEL)
 		{
-			vertices[indices[base]].quadPos = m_centerPosition;
+			for (uint32_t base = m_baseAddress; base < m_baseAddress + m_indexCount; base++)
+			{
+				vertices[indices[base]].quadPos = m_centerPosition;
+			}
+		}
+		else
+		{
+			// Calculate sub quad center position for 5u level (virtual quad node)
+
+			XMVECTOR right = XMLoadFloat3(&vertices[m_cornerIndex[2]].position) - XMLoadFloat3(&vertices[m_cornerIndex[0]].position);
+			XMVECTOR up = XMLoadFloat3(&vertices[m_cornerIndex[1]].position) - XMLoadFloat3(&vertices[m_cornerIndex[0]].position);
+
+			for (int step = 0; step < 4; step++)
+			{
+				XMVECTOR subCenter = XMLoadFloat3(&m_centerPosition);
+				if (step == 0)
+				{
+					subCenter = subCenter - right * 0.25f - up * 0.25f;
+				}
+				else if (step == 1)
+				{
+					subCenter = subCenter - right * 0.25f + up * 0.25f;
+				}
+				else if (step == 2)
+				{
+					subCenter = subCenter + right * 0.25f - up * 0.25f;
+				}
+				else
+				{
+					subCenter = subCenter + right * 0.25f + up * 0.25f;
+				}
+
+				const uint32_t base = m_baseAddress + step * (m_indexCount / 4);
+				for (int i = 0; i < m_indexCount / 4; i++)
+				{
+					XMStoreFloat3(&vertices[indices[base + i]].quadPos, subCenter);
+				}
+			}
 		}
 	}
 

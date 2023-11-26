@@ -11,8 +11,6 @@
 #include "ShadowMap.h"
 #include "StepTimer.h"
 
-#include "imgui.h"
-
 class Game final : public DX::IDeviceNotify
 {
 public:
@@ -54,14 +52,7 @@ private:
         DirectX::XMFLOAT4   lightDirection;
         DirectX::XMFLOAT4   lightColor;
         DirectX::XMMATRIX   shadowTransform;
-    	float               quadWidth;
-        UINT			    unitCount;
-    };
-
-    union PaddedOpaqueCB
-    {
-        OpaqueCB constants;
-        uint8_t bytes[2 * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT];
+        DirectX::XMFLOAT4   parameters;
     };
 
     struct ShadowCB
@@ -69,21 +60,8 @@ private:
         DirectX::XMMATRIX   lightWorldMatrix;
         DirectX::XMMATRIX   lightViewProjMatrix;
         DirectX::XMVECTOR   cameraPosition;
-        float               quadWidth;
-        UINT			    unitCount;
+        DirectX::XMFLOAT4   parameters;
     };
-
-    union PaddedShadowCB
-    {
-    	ShadowCB constants;
-		uint8_t bytes[2 * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT];
-	};
-
-    // Check the exact size to make sure it will align properly
-    static_assert(sizeof(PaddedOpaqueCB) == 
-        2 * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT, "PaddedOpaqueCB is not aligned properly");
-    static_assert(sizeof(PaddedShadowCB) ==
-        2 * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT, "PaddedShadowCB is not aligned properly");
 
     void Update(DX::StepTimer const& timer);
     void Render();
@@ -144,10 +122,10 @@ private:
 
     // CB
     Microsoft::WRL::ComPtr<ID3D12Resource>          m_cbUploadHeap;
-    PaddedOpaqueCB*                                 m_cbMappedData;
+    OpaqueCB*                                       m_cbMappedData;
     D3D12_GPU_VIRTUAL_ADDRESS                       m_cbGpuAddress;
 	Microsoft::WRL::ComPtr<ID3D12Resource>          m_cbUploadHeapShadow;
-    PaddedShadowCB*                                 m_cbMappedDataShadow;
+    ShadowCB*                                       m_cbMappedDataShadow;
     D3D12_GPU_VIRTUAL_ADDRESS                       m_cbGpuAddressShadow;
 
     // Texture Resources
@@ -220,9 +198,11 @@ private:
 
     DirectX::Mouse::Mode							m_mouseMode = DirectX::Mouse::Mode::MODE_ABSOLUTE;
     bool										    m_down = false;
-    bool										    m_lightRotation = false;
+    bool										    m_lightRotation = true;
     bool										    m_renderShadow = true;
     uint32_t										m_culledQuadCount = 0;
     float										    m_scrollWheelValue = 0;
     bool										    m_wireframe = false;
+    int										        m_tessMin = 0;
+    int										        m_tessMax = 8;
 };

@@ -5,3 +5,4 @@ displacement*
 packages/*
 texassemble.exe
 texconv.exe
+imgui.ini

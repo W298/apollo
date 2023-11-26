@@ -12,8 +12,7 @@ struct OpaqueCBType
     float4 lightDirection;
     float4 lightColor;
     float4x4 shadowTransform;
-    float quadWidth;
-    uint unitCount;
+    float4 parameters;
 };
 
 ConstantBuffer<OpaqueCBType> cb : register(b0);
@@ -47,18 +46,18 @@ SamplerState anisotropicClampMip1 : register(s2);
 //--------------------------------------------------------------------------------------
 float3 GetNormalFromHeight(Texture2D tex, float2 texSize, float2 sTexCoord, float multiplier)
 {
-    float2 xmOffset = { -1.0f / texSize.x, 0 };
-    float2 xpOffset = { +1.0f / texSize.y, 0 };
+    float2 xmOffset = { -3.f / texSize.x, 0 };
+    float2 xpOffset = { +3.f / texSize.y, 0 };
     float2 ymOffset = { 0, -1.0f / texSize.x };
     float2 ypOffset = { 0, +1.0f / texSize.y };
 
-    float xm = tex.Sample(anisotropicClampMip1, sTexCoord + xmOffset * multiplier).r;
-    float xp = tex.Sample(anisotropicClampMip1, sTexCoord + xpOffset * multiplier).r;
-    float ym = tex.Sample(anisotropicClampMip1, sTexCoord + ymOffset * multiplier).r;
-    float yp = tex.Sample(anisotropicClampMip1, sTexCoord + ypOffset * multiplier).r;
+    float xm = tex.Sample(samAnisotropic, sTexCoord + xmOffset * multiplier).r;
+    float xp = tex.Sample(samAnisotropic, sTexCoord + xpOffset * multiplier).r;
+    float ym = tex.Sample(samAnisotropic, sTexCoord + ymOffset * multiplier).r;
+    float yp = tex.Sample(samAnisotropic, sTexCoord + ypOffset * multiplier).r;
 
-    float3 va = normalize(float3(1.0f, 0, (xp - xm) * 0.4f));
-    float3 vb = normalize(float3(0, 1.0f, (yp - ym) * 0.4f));
+    float3 va = normalize(float3(1.0f, 0, (xp - xm) * 0.1f));
+    float3 vb = normalize(float3(0, 1.0f, (yp - ym) * 0.1f));
 
     return normalize(cross(va, vb));
 }
@@ -137,7 +136,7 @@ PS_OUTPUT PS(DS_OUT input)
         saturate((diffuse + ambient)
         * texColor.rgb
         * highNoise
-        * lerp(0.9f, 1.0f, h)), 1);
+        * lerp(0.95f, 1.0f, h)), 1);
 
     output.color = final;
 

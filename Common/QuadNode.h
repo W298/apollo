@@ -1,7 +1,7 @@
 #pragma once
 
 #define QUAD_NODE_MAX_LEVEL 4u
-#define TESS_GROUP_QUAD_LEVEL 4u
+#define TESS_GROUP_QUAD_LEVEL 5u	// DO NOT CHANGE THIS VALUE
 
 #include <DirectXCollision.h>
 #include <SimpleMath.h>

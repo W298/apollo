@@ -12,8 +12,7 @@ struct OpaqueCBType
     float4 lightDirection;
     float4 lightColor;
     float4x4 shadowTransform;
-    float quadWidth;
-    uint unitCount;
+    float4 parameters;
 };
 
 ConstantBuffer<OpaqueCBType> cb : register(b0);
@@ -93,7 +92,7 @@ float CalcTessFactor(float3 planePos)
     float d = distance(spherePos, cb.cameraPosition.xyz);
     float s = saturate((d - near) / (far - near));
 
-    return pow(2.0f, (int)(-8 * pow(s, 0.8f) + 8));
+    return pow(2.0f, (int)(-cb.parameters.w * pow(s, 0.8f) + cb.parameters.w));
 }
 
 PatchTess ConstantHS(InputPatch<VS_OUTPUT, 4> patch, int patchID : SV_PrimitiveID)
@@ -106,8 +105,8 @@ PatchTess ConstantHS(InputPatch<VS_OUTPUT, 4> patch, int patchID : SV_PrimitiveI
 
     float tess = CalcTessFactor(planeQuadPos);
 
-    float width = cb.quadWidth;
-    uint unitCount = cb.unitCount;
+    float width = cb.parameters.x;
+    uint unitCount = cb.parameters.y;
     float unitWidth = width / unitCount;
 
     float3 right;
@@ -223,7 +222,7 @@ HS_OUT HS(InputPatch<VS_OUTPUT, 4> input, int vertexIdx : SV_OutputControlPointI
 // Range is 0 ~ 6 (mipmap has 10 levels but use only 7).
 float CalcLevel(float tess)
 {
-    return max(0, 6 - (int)log2(tess));
+    return max(0, (cb.parameters.w - 2) - (int) log2(tess));
 }
 
 [domain("quad")]
@@ -265,7 +264,7 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
 
     // Get height from texture.
     float height = texMap[texIndex].SampleLevel(samAnisotropic, sTexCoord, level).r;
-    float3 catPos = normCatPos * (150.0f + height * 0.4f);
+    float3 catPos = normCatPos * (150.0f + height * 0.6f);
 
     // Multiply MVP matrices.
     output.position = mul(float4(catPos, 1.0f), cb.worldMatrix);
@@ -283,18 +282,18 @@ DS_OUT DS(const OutputPatch<HS_OUT, 4> input, float2 uv : SV_DomainLocation, Pat
 //--------------------------------------------------------------------------------------
 float3 GetNormalFromHeight(Texture2D tex, float2 texSize, float2 sTexCoord, float multiplier)
 {
-    float2 xmOffset = { -1.0f / texSize.x, 0 };
-    float2 xpOffset = { +1.0f / texSize.y, 0 };
+    float2 xmOffset = { -3.f / texSize.x, 0 };
+    float2 xpOffset = { +3.f / texSize.y, 0 };
     float2 ymOffset = { 0, -1.0f / texSize.x };
     float2 ypOffset = { 0, +1.0f / texSize.y };
 
-    float xm = tex.Sample(anisotropicClampMip1, sTexCoord + xmOffset * multiplier).r;
-    float xp = tex.Sample(anisotropicClampMip1, sTexCoord + xpOffset * multiplier).r;
-    float ym = tex.Sample(anisotropicClampMip1, sTexCoord + ymOffset * multiplier).r;
-    float yp = tex.Sample(anisotropicClampMip1, sTexCoord + ypOffset * multiplier).r;
+    float xm = tex.Sample(samAnisotropic, sTexCoord + xmOffset * multiplier).r;
+    float xp = tex.Sample(samAnisotropic, sTexCoord + xpOffset * multiplier).r;
+    float ym = tex.Sample(samAnisotropic, sTexCoord + ymOffset * multiplier).r;
+    float yp = tex.Sample(samAnisotropic, sTexCoord + ypOffset * multiplier).r;
 
-    float3 va = normalize(float3(1.0f, 0, (xp - xm) * 0.4f));
-    float3 vb = normalize(float3(0, 1.0f, (yp - ym) * 0.4f));
+    float3 va = normalize(float3(1.0f, 0, (xp - xm) * 0.1f));
+    float3 vb = normalize(float3(0, 1.0f, (yp - ym) * 0.1f));
 
     return normalize(cross(va, vb));
 }
@@ -407,7 +406,7 @@ PS_OUTPUT PS(DS_OUT input)
 		saturate((diffuse * saturate(shadowFactor + shadowCorrector) + ambient) 
 		* texColor.rgb 
 		* highNoise 
-		* lerp(0.9f, 1.0f, h)), 1);
+		* lerp(0.95f, 1.0f, h)), 1);
 
     output.color = final;
 
