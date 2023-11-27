@@ -76,13 +76,14 @@ DeviceResources::DeviceResources(
 // Destructor for DeviceResources.
 DeviceResources::~DeviceResources()
 {
-    ThrowIfFailed(m_swapChain->SetFullscreenState(FALSE, NULL));
-    // Ensure that the GPU is no longer referencing resources that are about to be destroyed.
+	// Ensure that the GPU is no longer referencing resources that are about to be destroyed.
     WaitForGpu();
+
+    if (m_fullScreenMode) ThrowIfFailed(m_swapChain->SetFullscreenState(FALSE, nullptr));
 }
 
 // Configures the Direct3D device, and stores handles to it and the device context.
-void DeviceResources::CreateDeviceResources()
+void DeviceResources::CreateDeviceResources(BOOL fullScreenMode)
 {
 #if defined(_DEBUG)
     // Enable the debug layer (requires the Graphics Tools "optional feature").
@@ -122,6 +123,10 @@ void DeviceResources::CreateDeviceResources()
 #endif
 
     ThrowIfFailed(CreateDXGIFactory2(m_dxgiFactoryFlags, IID_PPV_ARGS(m_dxgiFactory.ReleaseAndGetAddressOf())));
+
+    m_fullScreenMode = fullScreenMode;
+	if (m_fullScreenMode)
+        m_options = 0x0;
 
     // Determines whether tearing support is available for fullscreen borderless windows.
     if (m_options & c_AllowTearing)
@@ -337,7 +342,7 @@ void DeviceResources::CreateWindowSizeDependentResources()
         swapChainDesc.Scaling = DXGI_SCALING_STRETCH;
         swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
         swapChainDesc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-        swapChainDesc.Flags = m_options;
+        swapChainDesc.Flags = (m_options & c_AllowTearing) ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0u;
 
         DXGI_SWAP_CHAIN_FULLSCREEN_DESC fsSwapChainDesc = {};
         fsSwapChainDesc.Windowed = TRUE;
@@ -357,15 +362,18 @@ void DeviceResources::CreateWindowSizeDependentResources()
 
         // This class does not support exclusive full-screen mode and prevents DXGI from responding to the ALT+ENTER shortcut
         ThrowIfFailed(m_dxgiFactory->MakeWindowAssociation(m_window, DXGI_MWA_NO_ALT_ENTER));
-        ThrowIfFailed(m_swapChain->SetFullscreenState(TRUE, NULL));
 
-        ThrowIfFailed(m_swapChain->ResizeBuffers(
-            m_backBufferCount,
-            backBufferWidth,
-            backBufferHeight,
-            backBufferFormat,
-            m_options
-        ));
+        if (m_fullScreenMode)
+        {
+            ThrowIfFailed(m_swapChain->SetFullscreenState(TRUE, NULL));
+            ThrowIfFailed(m_swapChain->ResizeBuffers(
+                m_backBufferCount,
+                backBufferWidth,
+                backBufferHeight,
+                backBufferFormat,
+                m_options
+            ));
+        }
     }
 
     // Handle color space settings for HDR
@@ -512,7 +520,7 @@ void DeviceResources::HandleDeviceLost()
     m_d3dDevice.Reset();
     m_dxgiFactory.Reset();
 
-    CreateDeviceResources();
+    CreateDeviceResources(m_fullScreenMode);
     CreateWindowSizeDependentResources();
 
     if (m_deviceNotify)

@@ -37,7 +37,7 @@ namespace DX
         DeviceResources(DeviceResources const&) = delete;
         DeviceResources& operator= (DeviceResources const&) = delete;
 
-        void CreateDeviceResources();
+        void CreateDeviceResources(BOOL fullScreenMode);
         void CreateWindowSizeDependentResources();
         void SetWindow(HWND window, int width, int height) noexcept;
         bool WindowSizeChanged(int width, int height);
@@ -147,5 +147,7 @@ namespace DX
 
         // The IDeviceNotify can be held directly as it owns the DeviceResources.
         IDeviceNotify*                                      m_deviceNotify;
+
+        BOOL												m_fullScreenMode;
     };
 }

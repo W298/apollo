@@ -25,7 +25,7 @@ public:
     Game& operator= (Game const&) = delete;
 
     // Initialization and management
-    void Initialize(HWND window, int width, int height, UINT subDivideCount);
+    void Initialize(HWND window, int width, int height, UINT subDivideCount, UINT shadowMapSize, BOOL fullScreenMode);
 
     // Basic game loop
     void Tick();
@@ -97,6 +97,8 @@ private:
     UINT											m_width;
     UINT											m_height;
     float											m_aspectRatio;
+
+    UINT                                            m_shadowMapSize;
 
     // Number of draw calls
     static const unsigned int                       c_numDrawCalls = 2;

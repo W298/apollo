@@ -29,7 +29,7 @@ Game::Game() noexcept(false)
         DXGI_FORMAT_D24_UNORM_S8_UINT,          // depthBufferFormat (DXGI_FORMAT)
         3,                                      // backBufferCount (UINT)
         D3D_FEATURE_LEVEL_11_0,                 // minFeatureLevel (D3D_FEATURE_LEVEL)
-        DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH  // flags (unsigned int)
+        DX::DeviceResources::c_AllowTearing     // flags (unsigned int)
     );
 
     m_deviceResources->RegisterDeviceNotify(this);
@@ -44,7 +44,7 @@ Game::~Game()
 }
 
 // Initialize the Direct3D resources required to run.
-void Game::Initialize(HWND window, int width, int height, UINT subDivideCount)
+void Game::Initialize(HWND window, int width, int height, UINT subDivideCount, UINT shadowMapSize, BOOL fullScreenMode)
 {
     // Initialize input devices.
     m_keyboard = std::make_unique<Keyboard>();
@@ -58,7 +58,9 @@ void Game::Initialize(HWND window, int width, int height, UINT subDivideCount)
     m_height = height;
     m_aspectRatio = static_cast<float>(width) / static_cast<float>(height);
 
-    m_deviceResources->CreateDeviceResources();
+    m_shadowMapSize = shadowMapSize;
+
+    m_deviceResources->CreateDeviceResources(fullScreenMode);
     CreateDeviceDependentResources();
 
     m_deviceResources->CreateWindowSizeDependentResources();
@@ -169,7 +171,7 @@ void Game::Update(DX::StepTimer const& timer)
 
     // Light rotation update
     if (m_lightRotation)
-		m_lightDirection = XMVector3TransformCoord(m_lightDirection, XMMatrixRotationY(elapsedTime / 26.0f));
+		m_lightDirection = XMVector3TransformCoord(m_lightDirection, XMMatrixRotationY(elapsedTime / 24.0f));
 
     // Update Shadow Transform
     {
@@ -392,7 +394,8 @@ void Game::Render()
             ImGui::Begin("apollo");
             ImGui::SetWindowSize(ImVec2(450, 550), ImGuiCond_Always);
 
-            ImGui::Text("%d x %d", m_width, m_height);
+            ImGui::Text("%d x %d (Resolution)", m_width, m_height);
+            ImGui::Text("%d x %d (Shadow Map Resolution)", m_shadowMapSize, m_shadowMapSize);
             ImGui::TextColored(ImVec4(1, 1, 0, 1), "%.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
 
             ImGui::Dummy(ImVec2(0.0f, 20.0f));
@@ -555,7 +558,7 @@ void Game::CreateDeviceDependentResources()
     m_graphicsMemory = std::make_unique<GraphicsMemory>(device);
 
     // Initialize Shadow Map Instance
-    m_shadowMap = std::make_unique<ShadowMap>(m_deviceResources->GetD3DDevice(), 4096, 4096);
+    m_shadowMap = std::make_unique<ShadowMap>(m_deviceResources->GetD3DDevice(), m_shadowMapSize, m_shadowMapSize);
 
     // Initialize Bounds for Shadow Map
     m_sceneBounds.Center = XMFLOAT3(0.0f, 0.0f, 0.0f);

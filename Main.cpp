@@ -70,38 +70,46 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         if (!RegisterClassExW(&wcex))
             return 1;
 
-        // Check Arguments
-        LPWSTR* szArglist = nullptr;
-        int nArgs;
-
+        // Default values
         UINT subDivideCount = 8u;
         UINT width = GetSystemMetrics(SM_CXSCREEN);
         UINT height = GetSystemMetrics(SM_CYSCREEN);
+        UINT shadowMapSize = 8192u;
+        BOOL fullScreenMode = FALSE;
 
-        szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
+        // Check Arguments
+        int nArgs;
+        LPWSTR* szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
         if (szArglist == nullptr)
 			ExitGame();
 
-        if (1 < nArgs && nArgs < 4)
+        if (nArgs >= 2)
         {
             subDivideCount = std::min(9u, std::max(7u, static_cast<UINT>(std::stoi(szArglist[1]))));
         }
-        else if (nArgs == 4)
+    	if (nArgs >= 3)
         {
-            subDivideCount = std::min(9u, std::max(7u, static_cast<UINT>(std::stoi(szArglist[1]))));
-            width = std::max(1280u, static_cast<UINT>(std::stoi(szArglist[2])));
-            height = std::max(720u, static_cast<UINT>(std::stoi(szArglist[3])));
+            shadowMapSize = std::min(8192u, std::max(4096u, static_cast<UINT>(std::stoi(szArglist[2]))));
+        }
+        if (nArgs >= 4)
+        {
+            fullScreenMode = std::stoi(szArglist[3]);
+        }
+        if (nArgs >= 6 && !fullScreenMode)
+        {
+            width = std::max(1280u, static_cast<UINT>(std::stoi(szArglist[4])));
+            height = std::max(720u, static_cast<UINT>(std::stoi(szArglist[5])));
         }
 
-        if (szArglist != nullptr)
-            LocalFree(szArglist);
+        if (szArglist != nullptr) LocalFree(szArglist);
 
         // Create window
         RECT rc = { 0, 0, static_cast<LONG>(width), static_cast<LONG>(height) };
+        const DWORD dwStyle = fullScreenMode ? WS_POPUP : (WS_OVERLAPPEDWINDOW ^ WS_THICKFRAME);
 
-        AdjustWindowRect(&rc, WS_POPUP, FALSE);
+        AdjustWindowRect(&rc, dwStyle, FALSE);
 
-        HWND hwnd = CreateWindowExW(WS_EX_TOPMOST, L"apolloWindowClass", g_szAppName, WS_POPUP,
+        HWND hwnd = CreateWindowExW(WS_EX_TOPMOST, L"apolloWindowClass", g_szAppName, dwStyle,
             CW_USEDEFAULT, CW_USEDEFAULT, rc.right - rc.left, rc.bottom - rc.top,
             nullptr, nullptr, hInstance,
             g_game.get());
@@ -109,12 +117,12 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         if (!hwnd)
             return 1;
 
-        ShowWindow(hwnd, SW_SHOW);
+        ShowWindow(hwnd, nCmdShow);
 
         GetClientRect(hwnd, &rc);
         SetCursorPos(width/2, height/2);
 
-        g_game->Initialize(hwnd, rc.right - rc.left, rc.bottom - rc.top, subDivideCount);
+        g_game->Initialize(hwnd, rc.right - rc.left, rc.bottom - rc.top, subDivideCount, shadowMapSize, fullScreenMode);
     }
 
     // Main message loop
