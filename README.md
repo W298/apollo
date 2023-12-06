@@ -8,7 +8,7 @@ A large-scale lunar terrain renderer in DirectX 12 using terrain information fro
 
 ## Textures
 
-You have to download the textures from the [Release](https://github.com/W298/apollo/releases) and place the downloaded directory in your root directory for build properly.
+You have to download the textures from the [Release](https://github.com/W298/apollo/releases) and place Textures directory in your root directory for build properly.
 
 ## Techniques
 
