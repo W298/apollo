@@ -1,7 +1,5 @@
 # apollo
-
-<img width="800" alt="apollo-main" src="https://github.com/W298/apollo/assets/25034289/a8de3a47-bf9f-41c1-8c33-64c92fd8b627" />
-
+![title](https://github.com/W298/apollo/assets/25034289/95b49e3b-2ba5-4942-8750-5a3c66ceeb57)
 <br/>
 
 A large-scale lunar terrain renderer in DirectX 12 using terrain information from [NASA's Scientific Visualization Studio.](https://svs.gsfc.nasa.gov/cgi-bin/details.cgi?aid=4720)
