@@ -95,6 +95,7 @@ private:
     float											    m_aspectRatio;
     bool												m_fullScreenMode;
     static constexpr DXGI_FORMAT                        c_backBufferFormat = DXGI_FORMAT_B8G8R8A8_UNORM;
+    static constexpr DXGI_FORMAT                        c_rtvFormat = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
     static constexpr DXGI_FORMAT                        c_depthBufferFormat = DXGI_FORMAT_D32_FLOAT;
     static constexpr UINT                               c_swapBufferCount = 3;
 

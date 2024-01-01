@@ -830,7 +830,7 @@ void Apollo::CreateDeviceDependentResources()
         psoDesc.SampleMask = UINT_MAX;
         psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
         psoDesc.NumRenderTargets = 1;
-        psoDesc.RTVFormats[0] = c_backBufferFormat;
+        psoDesc.RTVFormats[0] = c_rtvFormat;
         psoDesc.SampleDesc.Count = 1;
         DX::ThrowIfFailed(
             m_d3dDevice->CreateGraphicsPipelineState(
@@ -948,7 +948,7 @@ void Apollo::CreateDeviceDependentResources()
         ImGui_ImplDX12_Init(
             m_d3dDevice.Get(),
             c_swapBufferCount,
-            c_backBufferFormat,
+            c_rtvFormat,
             m_srvDescriptorHeap.Get(),
             CD3DX12_CPU_DESCRIPTOR_HANDLE(m_srvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), 5, m_cbvSrvDescriptorSize),
             CD3DX12_GPU_DESCRIPTOR_HANDLE(m_srvDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), 5, m_cbvSrvDescriptorSize));
