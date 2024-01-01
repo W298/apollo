@@ -1,38 +1,169 @@
-//
-// Main.cpp
-//
-
 #include "pch.h"
-#include "Game.h"
+#include "Apollo.h"
+
+#include "ApolloArgument.h"
 #include "imgui_impl_win32.h"
+
+#ifndef HID_USAGE_PAGE_GENERIC
+#define HID_USAGE_PAGE_GENERIC         ((USHORT) 0x01)
+#endif
+#ifndef HID_USAGE_GENERIC_MOUSE
+#define HID_USAGE_GENERIC_MOUSE        ((USHORT) 0x02)
+#endif
 
 using namespace DirectX;
 
-#ifdef __clang__
-#pragma clang diagnostic ignored "-Wcovered-switch-default"
-#pragma clang diagnostic ignored "-Wswitch-enum"
-#endif
+UINT                        g_dwSize = sizeof(RAWINPUT);
+BYTE                        g_lpb[sizeof(RAWINPUT)];
 
-#pragma warning(disable : 4061)
+LPCWSTR                     g_szAppName = L"apollo";
+std::unique_ptr<Apollo>     g_apollo;
 
-#ifdef USING_D3D12_AGILITY_SDK
-extern "C"
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+// Windows procedure
+LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    // Used to enable the "Agility SDK" components
-    __declspec(dllexport) extern const UINT D3D12SDKVersion = D3D12_SDK_VERSION;
-    __declspec(dllexport) extern const char* D3D12SDKPath = u8".\\D3D12\\";
+    static bool s_in_sizemove = false;
+    static bool s_in_suspend = false;
+    static bool s_minimized = false;
+
+    // imgui procedure handler.
+    if (ImGui_ImplWin32_WndProcHandler(hWnd, message, wParam, lParam))
+        return true;
+
+    switch (message)
+    {
+    case WM_CREATE:
+        break;
+
+    case WM_PAINT:
+        if (s_in_sizemove && g_apollo)
+        {
+            g_apollo->Tick();
+        }
+        else
+        {
+            PAINTSTRUCT ps;
+            std::ignore = BeginPaint(hWnd, &ps);
+            EndPaint(hWnd, &ps);
+        }
+        break;
+
+    case WM_SIZE:
+        if (wParam == SIZE_MINIMIZED)
+        {
+            if (!s_minimized)
+            {
+                s_minimized = true;
+                if (!s_in_suspend && g_apollo)
+                    g_apollo->OnSuspending();
+                s_in_suspend = true;
+            }
+        }
+        else if (s_minimized)
+        {
+            s_minimized = false;
+            if (s_in_suspend && g_apollo)
+                g_apollo->OnResuming();
+            s_in_suspend = false;
+        }
+        else if (!s_in_sizemove && g_apollo)
+        {
+            g_apollo->OnWindowSizeChanged(LOWORD(lParam), HIWORD(lParam));
+        }
+        break;
+
+    case WM_KEYDOWN:
+        g_apollo->OnKeyDown(static_cast<UINT8>(wParam));
+        break;
+
+    case WM_KEYUP:
+		g_apollo->OnKeyUp(static_cast<UINT8>(wParam));
+		break;
+
+    case WM_MOUSEWHEEL:
+        g_apollo->OnMouseWheel(GET_WHEEL_DELTA_WPARAM(wParam));
+		break;
+
+    case WM_INPUT:
+    {
+        GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, g_lpb, &g_dwSize, sizeof(RAWINPUTHEADER));
+
+        const auto* raw = reinterpret_cast<RAWINPUT*>(g_lpb);
+        if (raw->header.dwType == RIM_TYPEMOUSE)
+            g_apollo->OnMouseMove(raw->data.mouse.lLastX, raw->data.mouse.lLastY);
+        break;
+    }
+
+    case WM_ENTERSIZEMOVE:
+        s_in_sizemove = true;
+        break;
+
+    case WM_EXITSIZEMOVE:
+        s_in_sizemove = false;
+        if (g_apollo)
+        {
+            RECT rc;
+            GetClientRect(hWnd, &rc);
+
+            g_apollo->OnWindowSizeChanged(rc.right - rc.left, rc.bottom - rc.top);
+        }
+        break;
+
+    case WM_GETMINMAXINFO:
+        if (lParam)
+        {
+	        const auto info = reinterpret_cast<MINMAXINFO*>(lParam);
+            info->ptMinTrackSize.x = 320;
+            info->ptMinTrackSize.y = 200;
+        }
+        break;
+
+    case WM_ACTIVATEAPP:
+        if (g_apollo)
+        {
+            if (wParam)
+            {
+                g_apollo->OnActivated();
+            }
+            else
+            {
+                g_apollo->OnDeactivated();
+            }
+        }
+        break;
+
+    case WM_POWERBROADCAST:
+        switch (wParam)
+        {
+        case PBT_APMQUERYSUSPEND:
+            if (!s_in_suspend && g_apollo)
+                g_apollo->OnSuspending();
+            s_in_suspend = true;
+            return TRUE;
+
+        case PBT_APMRESUMESUSPEND:
+            if (!s_minimized)
+            {
+                if (s_in_suspend && g_apollo)
+                    g_apollo->OnResuming();
+                s_in_suspend = false;
+            }
+            return TRUE;
+        }
+        break;
+
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        break;
+
+    case WM_MENUCHAR:
+        return MAKELRESULT(0, MNC_CLOSE);
+    }
+
+    return DefWindowProc(hWnd, message, wParam, lParam);
 }
-#endif
-
-namespace
-{
-    std::unique_ptr<Game> g_game;
-}
-
-LPCWSTR g_szAppName = L"apollo";
-
-LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
-void ExitGame() noexcept;
 
 // Entry point
 int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
@@ -43,16 +174,11 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
     if (!XMVerifyCPUSupport())
         return 1;
 
-#ifdef __MINGW32__
-    if (FAILED(CoInitializeEx(nullptr, COINITBASE_MULTITHREADED)))
-        return 1;
-#else
     Microsoft::WRL::Wrappers::RoInitializeWrapper initialize(RO_INIT_MULTITHREADED);
     if (FAILED(initialize))
         return 1;
-#endif
 
-    g_game = std::make_unique<Game>();
+    g_apollo = std::make_unique<Apollo>();
 
     // Register class and create window
     {
@@ -62,67 +188,51 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         wcex.style = CS_HREDRAW | CS_VREDRAW;
         wcex.lpfnWndProc = WndProc;
         wcex.hInstance = hInstance;
-        wcex.hIcon = LoadIconW(hInstance, L"IDI_ICON");
+        wcex.hIcon = LoadIcon(hInstance, IDI_APPLICATION);
         wcex.hCursor = LoadCursorW(nullptr, IDC_ARROW);
         wcex.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_ACTIVECAPTION);
         wcex.lpszClassName = L"apolloWindowClass";
-        wcex.hIconSm = LoadIconW(wcex.hInstance, L"IDI_ICON");
+        wcex.hIconSm = LoadIcon(hInstance, IDI_APPLICATION);
         if (!RegisterClassExW(&wcex))
             return 1;
 
-        // Default values
-        UINT subDivideCount = 8u;
-        UINT width = GetSystemMetrics(SM_CXSCREEN);
-        UINT height = GetSystemMetrics(SM_CYSCREEN);
-        UINT shadowMapSize = 8192u;
-        BOOL fullScreenMode = FALSE;
+        // Collect arguments
+        const ApolloArgument arguments = CollectApolloArgument();
 
-        // Check Arguments
-        int nArgs;
-        LPWSTR* szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
-        if (szArglist == nullptr)
-			ExitGame();
+        RECT rc = { 0, 0, static_cast<LONG>(arguments.Width), static_cast<LONG>(arguments.Height) };
+        const DWORD dwStyle = arguments.FullScreenMode ? WS_POPUP : WS_OVERLAPPEDWINDOW;
 
-        if (nArgs >= 2)
-        {
-            subDivideCount = std::min(9u, std::max(7u, static_cast<UINT>(std::stoi(szArglist[1]))));
-        }
-    	if (nArgs >= 3)
-        {
-            shadowMapSize = std::min(8192u, std::max(4096u, static_cast<UINT>(std::stoi(szArglist[2]))));
-        }
-        if (nArgs >= 4)
-        {
-            fullScreenMode = std::stoi(szArglist[3]);
-        }
-        if (nArgs >= 6 && !fullScreenMode)
-        {
-            width = std::max(1280u, static_cast<UINT>(std::stoi(szArglist[4])));
-            height = std::max(720u, static_cast<UINT>(std::stoi(szArglist[5])));
-        }
+    	AdjustWindowRect(&rc, dwStyle, FALSE);
 
-        if (szArglist != nullptr) LocalFree(szArglist);
-
-        // Create window
-        RECT rc = { 0, 0, static_cast<LONG>(width), static_cast<LONG>(height) };
-        const DWORD dwStyle = fullScreenMode ? WS_POPUP : (WS_OVERLAPPEDWINDOW ^ WS_THICKFRAME);
-
-        AdjustWindowRect(&rc, dwStyle, FALSE);
-
-        HWND hwnd = CreateWindowExW(WS_EX_TOPMOST, L"apolloWindowClass", g_szAppName, dwStyle,
+        HWND hwnd = CreateWindowExW(0, L"apolloWindowClass", g_szAppName, dwStyle,
             CW_USEDEFAULT, CW_USEDEFAULT, rc.right - rc.left, rc.bottom - rc.top,
             nullptr, nullptr, hInstance,
-            g_game.get());
+            g_apollo.get());
 
         if (!hwnd)
             return 1;
 
         ShowWindow(hwnd, nCmdShow);
+    	GetClientRect(hwnd, &rc);
 
-        GetClientRect(hwnd, &rc);
-        SetCursorPos(width/2, height/2);
+        POINT pt = { arguments.Width / 2, arguments.Height / 2 };
+        ClientToScreen(hwnd, &pt);
+        SetCursorPos(pt.x, pt.y);
+        ShowCursor(FALSE);
 
-        g_game->Initialize(hwnd, rc.right - rc.left, rc.bottom - rc.top, subDivideCount, shadowMapSize, fullScreenMode);
+        // Register raw input handler.
+        RAWINPUTDEVICE Rid[1];
+        Rid[0].usUsagePage = HID_USAGE_PAGE_GENERIC;
+        Rid[0].usUsage = HID_USAGE_GENERIC_MOUSE;
+        Rid[0].dwFlags = RIDEV_INPUTSINK;
+        Rid[0].hwndTarget = hwnd;
+        RegisterRawInputDevices(Rid, 1, sizeof(Rid[0]));
+
+        g_apollo->InitializeD3DResources(
+            hwnd, rc.right - rc.left, rc.bottom - rc.top, 
+            arguments.SubDivideCount, 
+            arguments.ShadowMapSize, 
+            arguments.FullScreenMode);
     }
 
     // Main message loop
@@ -136,193 +246,13 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         }
         else
         {
-            g_game->Tick();
+            g_apollo->Tick();
         }
     }
 
-    g_game.reset();
+    g_apollo.reset();
 
     return static_cast<int>(msg.wParam);
-}
-
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-// Windows procedure
-LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
-{
-    static bool s_in_sizemove = false;
-    static bool s_in_suspend = false;
-    static bool s_minimized = false;
-    static bool s_fullscreen = false;
-    // TODO: Set s_fullscreen to true if defaulting to fullscreen.
-
-    if (ImGui_ImplWin32_WndProcHandler(hWnd, message, wParam, lParam))
-        return true;
-
-    auto game = reinterpret_cast<Game*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
-
-    switch (message)
-    {
-    case WM_CREATE:
-        if (lParam)
-        {
-            auto params = reinterpret_cast<LPCREATESTRUCTW>(lParam);
-            SetWindowLongPtr(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(params->lpCreateParams));
-        }
-        break;
-
-    case WM_PAINT:
-        if (s_in_sizemove && game)
-        {
-            game->Tick();
-        }
-        else
-        {
-            PAINTSTRUCT ps;
-            std::ignore = BeginPaint(hWnd, &ps);
-            EndPaint(hWnd, &ps);
-        }
-        break;
-
-    case WM_DISPLAYCHANGE:
-        if (game)
-        {
-            game->OnDisplayChange();
-        }
-        break;
-
-    case WM_MOVE:
-        if (game)
-        {
-            game->OnWindowMoved();
-        }
-        break;
-
-    case WM_SIZE:
-        if (wParam == SIZE_MINIMIZED)
-        {
-            if (!s_minimized)
-            {
-                s_minimized = true;
-                if (!s_in_suspend && game)
-                    game->OnSuspending();
-                s_in_suspend = true;
-            }
-        }
-        else if (s_minimized)
-        {
-            s_minimized = false;
-            if (s_in_suspend && game)
-                game->OnResuming();
-            s_in_suspend = false;
-        }
-        else if (!s_in_sizemove && game)
-        {
-            game->OnWindowSizeChanged(LOWORD(lParam), HIWORD(lParam));
-        }
-        break;
-
-    case WM_ENTERSIZEMOVE:
-        s_in_sizemove = true;
-        break;
-
-    case WM_EXITSIZEMOVE:
-        s_in_sizemove = false;
-        if (game)
-        {
-            RECT rc;
-            GetClientRect(hWnd, &rc);
-
-            game->OnWindowSizeChanged(rc.right - rc.left, rc.bottom - rc.top);
-        }
-        break;
-
-    case WM_GETMINMAXINFO:
-        if (lParam)
-        {
-            auto info = reinterpret_cast<MINMAXINFO*>(lParam);
-            info->ptMinTrackSize.x = 320;
-            info->ptMinTrackSize.y = 200;
-        }
-        break;
-
-    case WM_ACTIVATEAPP:
-        if (game)
-        {
-            if (wParam)
-            {
-                game->OnActivated();
-            }
-            else
-            {
-                game->OnDeactivated();
-            }
-            Keyboard::ProcessMessage(message, wParam, lParam);
-            Mouse::ProcessMessage(message, wParam, lParam);
-        }
-        break;
-
-    case WM_POWERBROADCAST:
-        switch (wParam)
-        {
-        case PBT_APMQUERYSUSPEND:
-            if (!s_in_suspend && game)
-                game->OnSuspending();
-            s_in_suspend = true;
-            return TRUE;
-
-        case PBT_APMRESUMESUSPEND:
-            if (!s_minimized)
-            {
-                if (s_in_suspend && game)
-                    game->OnResuming();
-                s_in_suspend = false;
-            }
-            return TRUE;
-        }
-        break;
-
-    case WM_DESTROY:
-        PostQuitMessage(0);
-        break;
-
-    case WM_ACTIVATE:
-    case WM_INPUT:
-    case WM_MOUSEMOVE:
-    case WM_LBUTTONDOWN:
-    case WM_LBUTTONUP:
-    case WM_RBUTTONDOWN:
-    case WM_RBUTTONUP:
-    case WM_MBUTTONDOWN:
-    case WM_MBUTTONUP:
-    case WM_MOUSEWHEEL:
-    case WM_XBUTTONDOWN:
-    case WM_XBUTTONUP:
-    case WM_MOUSEHOVER:
-        Mouse::ProcessMessage(message, wParam, lParam);
-        break;
-
-    case WM_MOUSEACTIVATE:
-        // When you click activate the window, we want Mouse to ignore it.
-        return MA_ACTIVATEANDEAT;
-
-    case WM_KEYDOWN:
-    case WM_KEYUP:
-    case WM_SYSKEYUP:
-        Keyboard::ProcessMessage(message, wParam, lParam);
-        break;
-
-    case WM_SYSKEYDOWN:
-        Keyboard::ProcessMessage(message, wParam, lParam);
-        break;
-
-    case WM_MENUCHAR:
-        // A menu is active and the user presses a key that does not correspond
-        // to any mnemonic or accelerator key. Ignore so we don't produce an error beep.
-        return MAKELRESULT(0, MNC_CLOSE);
-    }
-
-    return DefWindowProc(hWnd, message, wParam, lParam);
 }
 
 // Exit helper

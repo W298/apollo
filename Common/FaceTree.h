@@ -1,9 +1,6 @@
 #pragma once
 
-#include <GraphicsMemory.h>
-
 #include "QuadNode.h"
-#include "ResourceUploadBatch.h"
 
 class FaceTree
 {
@@ -13,9 +10,9 @@ public:
 
 	QuadNode*								GetRootNode() const { return m_rootNode; }
 
-	void Init(ID3D12Device* device, ID3D12CommandQueue* commandQueue);
+	void Init(ID3D12Device* device);
 	uint32_t UpdateIndexData(IN DirectX::BoundingFrustum& frustum, IN const std::vector<uint32_t>& indices);
-	void Upload(DirectX::ResourceUploadBatch& upload, DirectX::GraphicsMemory* graphicsMemory);
+	void Upload(ID3D12GraphicsCommandList* commandList);
 	void Draw(ID3D12GraphicsCommandList* commandList) const;
 
 private:
@@ -32,5 +29,5 @@ private:
 
 	D3D12_INDEX_BUFFER_VIEW					m_ibv;
 	Microsoft::WRL::ComPtr<ID3D12Resource>  m_staticIB;
-	DirectX::SharedGraphicsResource         m_renderIB;
+	Microsoft::WRL::ComPtr<ID3D12Resource>  m_uploadIB;
 };

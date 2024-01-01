@@ -2,38 +2,29 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="Common">
-      <UniqueIdentifier>377bbb1d-7e5d-4540-ae3f-3902fbb6f0e1</UniqueIdentifier>
+      <UniqueIdentifier>9cce2834-caf4-476c-9d11-e29c62fe6351</UniqueIdentifier>
     </Filter>
     <Filter Include="Assets">
-      <UniqueIdentifier>0683993f-9cb4-4b32-b00c-bb3121cf3d45</UniqueIdentifier>
+      <UniqueIdentifier>28838180-92e4-4561-b152-f8ec56c5e0b2</UniqueIdentifier>
       <Extensions>ico;cur;bmp;dds;dlg;fbx;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tga;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
     <Filter Include="Shaders">
-      <UniqueIdentifier>{aba9eae0-abc2-4a2e-9feb-b16f797ca2c4}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Resources">
-      <UniqueIdentifier>{01b0fbec-16a9-44d3-8848-f79ebacbb12a}</UniqueIdentifier>
+      <UniqueIdentifier>{4bbd1a6f-87ae-4fe7-89ea-6d2273f0e2f2}</UniqueIdentifier>
     </Filter>
     <Filter Include="Common\imgui">
-      <UniqueIdentifier>{83f61c39-d4da-4fab-bf83-2aaf2068e4f3}</UniqueIdentifier>
+      <UniqueIdentifier>{55788e03-d0fd-4acf-97f6-87b208189915}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Common\ThirdParty">
+      <UniqueIdentifier>{18813420-6e09-4d56-9abf-bc7168595df6}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
-    <ClInclude Include="Game.h" />
+    <ClInclude Include="Apollo.h" />
+    <ClInclude Include="Common\ApolloArgument.h">
+      <Filter>Common</Filter>
+    </ClInclude>
     <ClInclude Include="Common\d3dx12.h">
-      <Filter>Common</Filter>
-    </ClInclude>
-    <ClInclude Include="Common\DeviceResources.h">
-      <Filter>Common</Filter>
-    </ClInclude>
-    <ClInclude Include="Common\ReadData.h">
-      <Filter>Common</Filter>
-    </ClInclude>
-    <ClInclude Include="Common\StepTimer.h">
-      <Filter>Common</Filter>
-    </ClInclude>
-    <ClInclude Include="Common\QuadSphereGenerator.h">
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="Common\FaceTree.h">
@@ -42,10 +33,22 @@
     <ClInclude Include="Common\QuadNode.h">
       <Filter>Common</Filter>
     </ClInclude>
+    <ClInclude Include="Common\QuadSphereGenerator.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="Common\ShadowMap.h">
+      <Filter>Common</Filter>
+    </ClInclude>
     <ClInclude Include="Common\imgui\imconfig.h">
       <Filter>Common\imgui</Filter>
     </ClInclude>
     <ClInclude Include="Common\imgui\imgui.h">
+      <Filter>Common\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="Common\imgui\imgui_impl_dx12.h">
+      <Filter>Common\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="Common\imgui\imgui_impl_win32.h">
       <Filter>Common\imgui</Filter>
     </ClInclude>
     <ClInclude Include="Common\imgui\imgui_internal.h">
@@ -60,30 +63,33 @@
     <ClInclude Include="Common\imgui\imstb_truetype.h">
       <Filter>Common\imgui</Filter>
     </ClInclude>
-    <ClInclude Include="Common\imgui\imgui_impl_dx12.h">
-      <Filter>Common\imgui</Filter>
+    <ClInclude Include="Common\ThirdParty\DDSTextureLoader12.h">
+      <Filter>Common\ThirdParty</Filter>
     </ClInclude>
-    <ClInclude Include="Common\imgui\imgui_impl_win32.h">
-      <Filter>Common\imgui</Filter>
+    <ClInclude Include="Common\ThirdParty\ReadData.h">
+      <Filter>Common\ThirdParty</Filter>
     </ClInclude>
-    <ClInclude Include="Common\ShadowMap.h">
-      <Filter>Common</Filter>
+    <ClInclude Include="Common\ThirdParty\SimpleMath.h">
+      <Filter>Common\ThirdParty</Filter>
+    </ClInclude>
+    <ClInclude Include="Common\ThirdParty\StepTimer.h">
+      <Filter>Common\ThirdParty</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp" />
-    <ClCompile Include="Game.cpp" />
+    <ClCompile Include="Apollo.cpp" />
     <ClCompile Include="Main.cpp" />
-    <ClCompile Include="Common\DeviceResources.cpp">
+    <ClCompile Include="Common\FaceTree.cpp">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="Common\QuadNode.cpp">
       <Filter>Common</Filter>
     </ClCompile>
     <ClCompile Include="Common\QuadSphereGenerator.cpp">
       <Filter>Common</Filter>
     </ClCompile>
-    <ClCompile Include="Common\FaceTree.cpp">
-      <Filter>Common</Filter>
-    </ClCompile>
-    <ClCompile Include="Common\QuadNode.cpp">
+    <ClCompile Include="Common\ShadowMap.cpp">
       <Filter>Common</Filter>
     </ClCompile>
     <ClCompile Include="Common\imgui\imgui.cpp">
@@ -95,64 +101,54 @@
     <ClCompile Include="Common\imgui\imgui_draw.cpp">
       <Filter>Common\imgui</Filter>
     </ClCompile>
-    <ClCompile Include="Common\imgui\imgui_tables.cpp">
-      <Filter>Common\imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="Common\imgui\imgui_widgets.cpp">
-      <Filter>Common\imgui</Filter>
-    </ClCompile>
     <ClCompile Include="Common\imgui\imgui_impl_dx12.cpp">
       <Filter>Common\imgui</Filter>
     </ClCompile>
     <ClCompile Include="Common\imgui\imgui_impl_win32.cpp">
       <Filter>Common\imgui</Filter>
     </ClCompile>
-    <ClCompile Include="Common\ShadowMap.cpp">
-      <Filter>Common</Filter>
+    <ClCompile Include="Common\imgui\imgui_tables.cpp">
+      <Filter>Common\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="Common\imgui\imgui_widgets.cpp">
+      <Filter>Common\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="Common\ThirdParty\DDSTextureLoader12.cpp">
+      <Filter>Common\ThirdParty</Filter>
+    </ClCompile>
+    <ClCompile Include="Common\ThirdParty\SimpleMath.cpp">
+      <Filter>Common\ThirdParty</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="resource.rc" />
-  </ItemGroup>
-  <ItemGroup>
-    <Image Include="directx.ico">
-      <Filter>Assets</Filter>
-    </Image>
-  </ItemGroup>
-  <ItemGroup>
-    <Manifest Include="settings.manifest">
-      <Filter>Assets</Filter>
-    </Manifest>
-  </ItemGroup>
-  <ItemGroup>
-    <FxCompile Include="Shaders\PS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\VS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\HS.hlsl">
+    <FxCompile Include="Shaders\DebugPS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\DS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="Shaders\ShadowVS.hlsl">
+    <FxCompile Include="Shaders\HS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="Shaders\ShadowPS.hlsl">
+    <FxCompile Include="Shaders\NoShadowPS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="Shaders\ShadowHS.hlsl">
+    <FxCompile Include="Shaders\PS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\ShadowDS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="Shaders\DebugPS.hlsl">
+    <FxCompile Include="Shaders\ShadowHS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="Shaders\NoShadowPS.hlsl">
+    <FxCompile Include="Shaders\ShadowPS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ShadowVS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\VS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>
@@ -163,6 +159,8 @@
     <None Include="Shaders\Shadow.hlsli">
       <Filter>Shaders</Filter>
     </None>
-    <None Include="packages.config" />
+    <None Include="Common\ThirdParty\SimpleMath.inl">
+      <Filter>Common\ThirdParty</Filter>
+    </None>
   </ItemGroup>
 </Project>

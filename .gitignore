@@ -1,8 +1,5 @@
 .vs
+Debug
 x64
-colormap*
-displacement*
-packages/*
-texassemble.exe
-texconv.exe
+Textures
 imgui.ini
